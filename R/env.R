@@ -1,4 +1,6 @@
-message("env.R: Setting working directory to project directory...")
+#message("env.R: Setting working directory to project directory...")
+#suppressPackageStartupMessages(require(rprojroot))
+#rprojroot::find_rstudio_root_file() # Has to be in r setup on markdown
 
 suppressPackageStartupMessages(require(devtools))
 set_installPath <- function(path = "package/R"){
@@ -6,7 +8,7 @@ set_installPath <- function(path = "package/R"){
   .libPaths(path, include.site = TRUE)
   message(paste0("env.R: Setting .libPaths() to: ", paste(.libPaths(), collapse = "  ")))
 }
-set_installPath("package/R")
+#set_installPath("package/R")
 
 ###
 
