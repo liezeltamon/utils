@@ -1,10 +1,23 @@
 suppressPackageStartupMessages({
-  require(tidyverse)
+  require(DelayedMatrixStats)
+  require(DropletUtils)
+  require(clustree)
+  require(irlba)
   require(scran)
   require(Seurat)
-  require(irlba)
-  require(clustree)
+  require(tidyverse)
 })
+
+# Check
+
+## Copied from https://github.com/Bioconductor/SummarizedExperiment/compare/6011d3e62f4fe9c41e4485478eb5cc0a881a0032..4aa706a2124209fee9074a029bd0829d97ddb995
+splitByCol <- function(x, f, drop=FALSE) {
+  by.col <- split(seq_len(ncol(x)), f, drop=drop)
+  out <- lapply(by.col, function(i) x[,i])
+  List(out)
+}
+
+#
 
 create_seuFromSce <- function(sce){
   seu <- CreateSeuratObject(counts = counts(sce),
@@ -14,6 +27,12 @@ create_seuFromSce <- function(sce){
   return(seu)
 }
 
+make_uniqueAsInSeu <- function(sce){
+  gsymbols_uniq <- make.unique(rowData(sce)$Symbol)
+  rownames(sce) <- gsymbols_uniq
+  return(sce)
+}
+
 create_sceFromSeu <- function(seu){
   sce <- SingleCellExperiment(assays = list(counts = GetAssayData(seu, slot = "counts"),
                                             logcounts= GetAssayData(seu, slot = "data")),
@@ -21,6 +40,62 @@ create_sceFromSeu <- function(seu){
                                                  UMAP = Embeddings(seu, reduction = "umap")),
                               colData = seu[[]])
   return(sce)
+}
+
+# Based on OSCA book
+plot_barcodeRanks <- function(counts_mat){
+  bcrank <- DropletUtils::barcodeRanks(counts_mat)
+  # Only showing unique points for plotting speed
+  uniq <- !duplicated(bcrank$rank)
+  p <- ggplot(as.data.frame(bcrank[uniq,]), aes(rank, total)) +
+    geom_point() +
+    geom_hline(yintercept = c(metadata(bcrank)$knee, metadata(bcrank)$inflection), 
+               colour = c("dodgerblue", "darkgreen")) + 
+    scale_x_log10() +
+    scale_y_log10() + 
+    labs(lab = "log10(rank)", ylab = "log10(UMI count)", 
+         title = paste0("knee-blue-", metadata(bcrank)$knee), " | inflection-green-", metadata(bcrank)$inflection)
+  return(p)
+}
+  
+do_basicQC <- function(counts_mat = NULL, sce = NULL){ # Expects rownames to be gene symbols
+  if(is.null(counts_mat)){ counts_mat <- counts(sce) }
+  mito_genes <- rownames(counts_mat)[grep("^MT-", rownames(counts_mat))]
+  ribo_genes <- rownames(counts_mat)[grep("^RP[SL]", rownames(counts_mat))]
+  qc_tbl <- perCellQCMetrics(counts_mat, subsets = list(mito_genes = mito_genes, ribo_genes = ribo_genes))
+  
+  if(!is.null(sce)){
+    colData(sce) <- cbind(colData(sce), qc_tbl); return(sce)
+  } else {
+    return(qc_tbl)
+  }
+}
+
+plot_basicQC <- function(qc_tbl, group = "Sample", metrics = c("sum", "detected"), plot_type = "violin", transform_log10 = TRUE){
+  qc_tbl <- qc_tbl[,c(group, metrics)] %>% 
+    as.data.frame %>% 
+    rownames_to_column(var = "Barcode_uniq")
+  
+  colnames(qc_tbl)[colnames(qc_tbl) == group] <- "group"
+  
+  qc_tbl <- qc_tbl %>% 
+    tidyr::pivot_longer(cols = -c(Barcode_uniq, group))
+  
+  if(plot_type == "histogram"){
+    p <- ggplot(qc_tbl, aes(value)) +
+      geom_histogram(bins = 100, fill = "gray70", col = "black") + 
+      facet_grid(group~name)
+    if(transform_log10){ p <- p + scale_x_log10() + labs(x = "log10(value)") }
+  } else if(plot_type == "violin"){
+    p <- ggplot(qc_tbl, aes(group, value)) +
+      geom_violin() + 
+      facet_grid(.~name)
+    if(transform_log10){ p <- p + scale_y_log10() + labs(y = "log10(value)") }
+  } else {
+    stop("plot_basicQC(): plot_type not recognised.")
+  }
+  
+  return(p)
 }
 
 getModuleScores <- function(obj){
