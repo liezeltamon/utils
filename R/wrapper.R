@@ -43,7 +43,7 @@ create_sceFromSeu <- function(seu){
 }
 
 # Based on OSCA book
-plot_barcodeRanks <- function(counts_mat){
+plot_barcodeRanks <- function(counts_mat, sample_id = NULL){
   bcrank <- DropletUtils::barcodeRanks(counts_mat)
   # Only showing unique points for plotting speed
   uniq <- !duplicated(bcrank$rank)
@@ -54,7 +54,16 @@ plot_barcodeRanks <- function(counts_mat){
     scale_x_log10() +
     scale_y_log10() + 
     labs(lab = "log10(rank)", ylab = "log10(UMI count)", 
-         title = paste0("knee-blue-", metadata(bcrank)$knee), " | inflection-green-", metadata(bcrank)$inflection)
+         title = paste0(sample_id, " knee-blue-", metadata(bcrank)$knee, " \n inflection-green-", metadata(bcrank)$inflection)) +
+    theme(plot.title = element_text(size = 10))
+  return(p)
+}
+
+plot_ambientPval <- function(emptyDrops_out, emptyDrops_lower = 100, seed = 290){
+  set.seed(seed)
+  p <- ggplot(as.data.frame(emptyDrops_out[emptyDrops_out$Total > 0 & emptyDrops_out$Total <= emptyDrops_lower,]), aes(PValue)) + 
+    geom_histogram(fill = "gray70", col = "black") +
+    labs(x = "Pvalue")
   return(p)
 }
   
@@ -81,16 +90,15 @@ plot_basicQC <- function(qc_tbl, group = "Sample", metrics = c("sum", "detected"
   qc_tbl <- qc_tbl %>% 
     tidyr::pivot_longer(cols = -c(Barcode_uniq, group))
   
+  if(transform_log10){ qc_tbl$value <- log10(qc_tbl$value) }
   if(plot_type == "histogram"){
     p <- ggplot(qc_tbl, aes(value)) +
       geom_histogram(bins = 100, fill = "gray70", col = "black") + 
       facet_grid(group~name)
-    if(transform_log10){ p <- p + scale_x_log10() + labs(x = "log10(value)") }
   } else if(plot_type == "violin"){
     p <- ggplot(qc_tbl, aes(group, value)) +
-      geom_violin() + 
+      geom_violin() +
       facet_grid(.~name)
-    if(transform_log10){ p <- p + scale_y_log10() + labs(y = "log10(value)") }
   } else {
     stop("plot_basicQC(): plot_type not recognised.")
   }
@@ -103,11 +111,10 @@ getModuleScores <- function(obj){
   return(obj)
 }
 
-get_denoisedPCs <- function(expr_mat, block, subset.row, seed = 290){
+get_denoisedPCs <- function(expr_mat, subset.row, block = NULL, seed = 290){
   set.seed(seed)
   var_dec <- scran::modelGeneVar(expr_mat, block = block)
-  out_lst <- scran::getDenoisedPCs(mx, technical = var_dec, subset.row = subset.row)
-  
+  out_lst <- scran::getDenoisedPCs(expr_mat, technical = var_dec, subset.row = subset.row)
   return(out_lst)
 }
 
