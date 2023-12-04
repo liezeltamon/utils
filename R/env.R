@@ -1,4 +1,6 @@
-message("env.R: Setting working directory to project directory...")
+#message("env.R: Setting working directory to project directory...")
+#suppressPackageStartupMessages(require(rprojroot))
+#rprojroot::find_rstudio_root_file() # Has to be in r setup on markdown
 
 suppressPackageStartupMessages(require(devtools))
 set_installPath <- function(path = "package/R"){
@@ -6,14 +8,15 @@ set_installPath <- function(path = "package/R"){
   .libPaths(path, include.site = TRUE)
   message(paste0("env.R: Setting .libPaths() to: ", paste(.libPaths(), collapse = "  ")))
 }
-set_installPath("package/R")
+#set_installPath("package/R")
 
 ###
 
 suppressPackageStartupMessages({
+  require(doParallel)
+  require(ggplot2)
   require(reticulate)
   require(sessioninfo)
-  require(ggplot2)
 })
 
 options(warnPartialMatchDollar = TRUE)
@@ -48,3 +51,13 @@ save_sessioninfo <- function(out_dir, out_id){
 }
 
 theme_set(theme_classic())
+
+##### Stash for reference
+# if(nCPU > 1){
+#   registerDoParallel(cores = nCPU)
+#   `%op%` <- `%dopar%`
+#   print(paste0("Running with ", nCPU, " cores."), quote = FALSE)
+# } else {
+#   `%op%` <- `%do%`
+# }
+#####
