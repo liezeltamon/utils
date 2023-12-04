@@ -13,9 +13,10 @@ set_installPath <- function(path = "package/R"){
 ###
 
 suppressPackageStartupMessages({
+  require(doParallel)
+  require(ggplot2)
   require(reticulate)
   require(sessioninfo)
-  require(ggplot2)
 })
 
 options(warnPartialMatchDollar = TRUE)
@@ -50,3 +51,13 @@ save_sessioninfo <- function(out_dir, out_id){
 }
 
 theme_set(theme_classic())
+
+##### Stash for reference
+# if(nCPU > 1){
+#   registerDoParallel(cores = nCPU)
+#   `%op%` <- `%dopar%`
+#   print(paste0("Running with ", nCPU, " cores."), quote = FALSE)
+# } else {
+#   `%op%` <- `%do%`
+# }
+#####

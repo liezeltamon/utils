@@ -1,5 +1,43 @@
+require(data.table)
+require(RColorBrewer)
 require(R.utils)
+require(tidyverse)
 
+##### Stash for reference
+# colData(do.call("cbind", sce_list)) %>% 
+#   as_tibble() %>%
+#   select(Sample, sum) %>%
+#   distinct() %>% 
+#   group_by(Sample) %>%
+#   summarise_all(list(max = max, median = median, 
+#                      q0.75 = function(x) quantile(x, probs = 0.75), 
+#                      q0.99 = function(x) quantile(x, probs = 0.99)))
+
+extendPaletteFUN <- colorRampPalette(brewer.pal(9, "Set1"))
+#####
+
+##### Make generic
+check_specificityLabels <- function(mdta_tbl = colData(dta_raw), 
+                                    grouping_label = "Clusters",
+                                    toCheck_labels = c("TopLevelCluster", "CellClass"),
+                                    return_uniq_dt = FALSE){
+  tmp_dt <- as.data.table(mdta_tbl[,c(grouping_label, toCheck_labels)])
+  tmp_uniq_dt <- tmp_dt[!duplicated(tmp_dt),]
+  tmp_uniq_perGroupingLabel <- split(tmp_uniq_dt, f = as.character(tmp_uniq_dt[[grouping_label]]))
+  class_len_perGroupingLabel <- unname(unlist(lapply(tmp_uniq_perGroupingLabel, FUN = nrow)))
+  if(!all(class_len_perGroupingLabel == 1)){
+    warning(paste0(paste(toCheck_labels, collapse = ","), " are NOT unique per ", grouping_label))
+  } else{
+    message(paste0(paste(toCheck_labels, collapse = ","), " are unique per ", grouping_label))
+  }
+  
+  if(return_uniq_dt){
+    return(tmp_uniq_dt)
+  }
+}
+#####
+
+#####
 # No fix for levels of same size
 as_factor_bySize <- function(x, decreasing = TRUE){
   x <- as.character(x)
@@ -29,5 +67,4 @@ cellranger_renamefastq <- function(src_dir, out_dir, samples){
     
   }
 }
-
 #rm(list=ls())

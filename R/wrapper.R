@@ -1,8 +1,10 @@
 suppressPackageStartupMessages({
+  require(BiocParallel)
   require(DelayedMatrixStats)
   require(DropletUtils)
   require(clustree)
   require(irlba)
+  require(scater)
   require(scran)
   require(Seurat)
   require(tidyverse)
@@ -19,11 +21,11 @@ splitByCol <- function(x, f, drop=FALSE) {
 
 #
 
-create_seuFromSce <- function(sce){
+create_seuFromSce <- function(sce, min.cells = 0, min.features = 0){
   seu <- CreateSeuratObject(counts = counts(sce),
                             meta.data = as.data.frame(colData(sce)),
-                            min.cells = 0,
-                            min.features = 0)
+                            min.cells = min.cells,
+                            min.features = min.features)
   return(seu)
 }
 
@@ -111,6 +113,19 @@ getModuleScores <- function(obj){
   return(obj)
 }
 
+
+plot_variableContribution <- function(sce,
+                                      covars = c("Sample", "condition", "nCount_RNA", "nFeature_RNA", "subsets_mito_genes_percent", "subsets_ribo_genes_percent", "S.Score","G2M.Score", "CC.Difference", "Phase"),
+                                      subset_row, nCPU,
+                                      dimred, n_dimred # For scater::getExplanatoryPCs()
+                                      ){
+  covars_varexp <- scater::getVarianceExplained(sce, variables = covars, subset_row = subset_row, BPPARAM = MulticoreParam(nCPU))
+  p_varexp <- scater::plotExplanatoryVariables(covars_varexp, nvars_to_plot = Inf)
+  exp_pcs <- scater::getExplanatoryPCs(sce, dimred = dimred, n_dimred = n_dimred, variables = covars)
+  p_exp_pcs <- plotExplanatoryPCs(exp_pcs)
+  return(list(p_varexp, p_exp_pcs))
+}
+
 get_denoisedPCs <- function(expr_mat, subset.row, block = NULL, seed = 290){
   set.seed(seed)
   var_dec <- scran::modelGeneVar(expr_mat, block = block)
@@ -137,10 +152,8 @@ get_clusters <- function(expr_mat,
     alg_num <- 1
   }
   knn <- FindNeighbors(pca_mat, verbose = FALSE)
-  clusters <- FindClusters(knn$snn, verbose = FALSE, method = alg_num, resolution = resolution) %>%
-    as_tibble(rownames = "cell")
-  colnames(clusters) <- c("cell", paste0(method, "_", as.character(resolution)))
-  
+  clusters <- FindClusters(knn$snn, verbose = FALSE, method = alg_num, resolution = resolution)
+  colnames(clusters) <- paste0(method, "_", as.character(resolution))
   return(clusters)
 }
 
