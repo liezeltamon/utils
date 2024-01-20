@@ -13,6 +13,10 @@ require(tidyverse)
 #                      q0.75 = function(x) quantile(x, probs = 0.75), 
 #                      q0.99 = function(x) quantile(x, probs = 0.99)))
 
+# SCE gene ID -> unique gene symbols
+# gsymbols_uniq <- make.unique(rowData(sce)$Symbol)
+# rownames(sce) <- gsymbols_uniq
+
 extendPaletteFUN <- colorRampPalette(brewer.pal(9, "Set1"))
 #####
 
@@ -53,14 +57,18 @@ as_factor_bySize <- function(x, decreasing = TRUE){
 # src_dir = file.path("data-raw", "2023-10-06_scRNAseq")
 # out_dir = create_dir(file.path("data", "2023-10-06_scRNAseq_renamed"))
 # samp = "CO-NSC1"
-cellranger_renamefastq <- function(src_dir, out_dir, samples){
+cellranger_renamefastq <- function(src_dir, out_dir, samples, patt = paste0("^", samp, "_R.+_001.fastq.gz$"), rename = TRUE){
   for(samp in samples){
     
-    samp_paths <- list.files(src_dir, pattern = paste0("^", samp, "_R"))
+    samp_paths <- list.files(src_dir, pattern = patt)
     samp_paths <- samp_paths[grepl("_001.fastq.gz$", samp_paths)]
     
     for(pth in samp_paths){
-      pth_renamed <- gsub(samp, paste0(samp, "_S1_L001"), pth)
+      if(rename){
+        pth_renamed <- gsub(samp, paste0(samp, "_S1_L001"), pth)
+      } else {
+        pth_renamed <- pth
+      }
       R.utils::createLink(link = file.path(out_dir, pth_renamed),
                           target = file.path(src_dir, pth))
     }
