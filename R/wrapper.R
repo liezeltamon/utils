@@ -21,11 +21,9 @@ splitByCol <- function(x, f, drop=FALSE) {
 
 #
 
-create_seuFromSce <- function(sce, min.cells = 0, min.features = 0){
-  seu <- CreateSeuratObject(counts = counts(sce),
-                            meta.data = as.data.frame(colData(sce)),
-                            min.cells = min.cells,
-                            min.features = min.features)
+#create_seuFromSce <- function(sce, min.cells = 0, min.features = 0){
+create_seuFromSce <- function(sce, ...){
+  seu <- CreateSeuratObject(counts = counts(sce), meta.data = as.data.frame(colData(sce)), ...)
   return(seu)
 }
 
@@ -122,7 +120,7 @@ plot_variableContribution <- function(sce,
   covars_varexp <- scater::getVarianceExplained(sce, variables = covars, subset_row = subset_row, BPPARAM = MulticoreParam(nCPU))
   p_varexp <- scater::plotExplanatoryVariables(covars_varexp, nvars_to_plot = Inf)
   exp_pcs <- scater::getExplanatoryPCs(sce, dimred = dimred, n_dimred = n_dimred, variables = covars)
-  p_exp_pcs <- plotExplanatoryPCs(exp_pcs)
+  p_exp_pcs <- plotExplanatoryPCs(exp_pcs) # From source code -> scale_y_log10(breaks = 10 ^ (-3:2), labels = c(0.001, 0.01, 0.1, 1, 10, 100))
   return(list(p_varexp, p_exp_pcs))
 }
 
@@ -157,8 +155,8 @@ get_clusters <- function(expr_mat,
   return(clusters)
 }
 
-get_clustree <- function(clusters_mat, prefix, ggsave_path = NULL, height = 30, width = 30){
-  ctree_obj <- clustree(clusters_mat, prefix = prefix)
+get_clustree <- function(clusters_mat, prefix, ggsave_path = NULL, height = 30, width = 30, ...){
+  ctree_obj <- clustree(clusters_mat, prefix = prefix, ...)
   # Reverse tree so at the top is the lowest resolution i.e. larger clusters
   ctree_obj$data[[prefix]] <- factor(as.character(ctree_obj$data[[prefix]]),
                                      levels = rev(levels(ctree_obj$data[[prefix]])))
