@@ -53,6 +53,8 @@ save_sessioninfo <- function(out_dir, out_id){
 theme_set(theme_classic())
 
 ##### Stash for reference
+# extendPaletteFUN <- colorRampPalette(RColorBrewer::brewer.pal(7, "Spectral"))
+#####
 # if(nCPU > 1){
 #   registerDoParallel(cores = nCPU)
 #   `%op%` <- `%dopar%`
