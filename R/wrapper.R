@@ -8,6 +8,11 @@ suppressPackageStartupMessages({
   require(scran)
   require(Seurat)
   require(tidyverse)
+  # For using leidenalg python module for Seurat::FindClusters(), need RETICULATE_PYTHON to be set to python environment path in .Renviron
+  require(reticulate)
+  reticulate::import("numpy")
+  reticulate::import("pandas")
+  reticulate::import("leidenalg")
 })
 
 # Check
@@ -106,22 +111,41 @@ plot_basicQC <- function(qc_tbl, group = "Sample", metrics = c("sum", "detected"
   return(p)
 }
 
+# Return list of genes based on criteria
+filter_features <- function(mx, min_num_samples = NULL, min_perc_samples = NULL, drop_mito = FALSE, drop_ribo = FALSE){
+  
+  samples_len <- ncol(mx)
+  
+  if (is.null(min_perc_samples)) {
+    
+    # Roughly get features expressed (non-zero) in 1 per thousand of cells
+    min_num_samples <- ifelse(is.null(min_num_samples), ceiling(samples_len * 0.001), min_num_samples)
+    num_samples_withfeat <- scuttle::numDetectedAcrossCells(mx, rep("group", times = samples_len), threshold = 0)
+    num_samples_withfeat <- assay(num_samples_withfeat, "sum")[,"group"]
+    features_left <- names(num_samples_withfeat[num_samples_withfeat >= min_num_samples])
+    message("filter_features(): Filtering based on min_num_samples = ", min_num_samples)
+    
+  } else {
+    feature_metrics_dframe <- perFeatureQCMetrics(mx, threshold = 0)
+    features_left <- rownames(feature_metrics_dframe)[feature_metrics_dframe$detected >= min_perc_samples]
+    message("filter_features(): Filtering based on min_perc_samples = ", min_perc_samples)
+  }
+  
+  if (drop_mito) {
+    features_left <- features_left[!grepl("^MT-", features_left)]
+  }
+  
+  if (drop_ribo) {
+    features_left <- features_left[!grepl("^RP[SL]", features_left)]
+  }
+  
+  return(features_left)
+  
+}
+
 getModuleScores <- function(obj){
   obj <- CellCycleScoring(obj, s.features = cc.genes.updated.2019$s.genes, g2m.features = cc.genes.updated.2019$g2m.genes)
   return(obj)
-}
-
-
-plot_variableContribution <- function(sce,
-                                      covars = c("Sample", "condition", "nCount_RNA", "nFeature_RNA", "subsets_mito_genes_percent", "subsets_ribo_genes_percent", "S.Score","G2M.Score", "CC.Difference", "Phase"),
-                                      subset_row, nCPU,
-                                      dimred, n_dimred # For scater::getExplanatoryPCs()
-                                      ){
-  covars_varexp <- scater::getVarianceExplained(sce, variables = covars, subset_row = subset_row, BPPARAM = MulticoreParam(nCPU))
-  p_varexp <- scater::plotExplanatoryVariables(covars_varexp, nvars_to_plot = Inf)
-  exp_pcs <- scater::getExplanatoryPCs(sce, dimred = dimred, n_dimred = n_dimred, variables = covars)
-  p_exp_pcs <- plotExplanatoryPCs(exp_pcs) # From source code -> scale_y_log10(breaks = 10 ^ (-3:2), labels = c(0.001, 0.01, 0.1, 1, 10, 100))
-  return(list(p_varexp, p_exp_pcs))
 }
 
 get_denoisedPCs <- function(expr_mat, subset.row, block = NULL, seed = 290){
@@ -133,11 +157,43 @@ get_denoisedPCs <- function(expr_mat, subset.row, block = NULL, seed = 290){
 
 # Modified from quadbio/organoid_regulomes
 get_clusters <- function(expr_mat,
-                         do_pca = TRUE,
+                         do_pca,
+                         dims_use,
+                         # If applying pca on input expression matrix
                          scale_pca,
-                         n_pcs = 50,
-                         method = "leiden",
-                         resolution = 0.8){
+                         n_pcs,
+                         # FindClusters() parameters
+                         resolution = 0.8,
+                         algorithm = "louvain",
+                         method = "leiden" # Deprecated, method confused with algorithm argument in FindClusters()
+                         ){
+  warning("Need to fix when inputting expression matrix instead.")
+  if(do_pca){
+    message("get_clusters(): Applying pca on input matrix...")
+    pca_mat <- irlba::prcomp_irlba(expr_mat, n = n_pcs, scale. = scale_pca)$x
+    rownames(pca_mat) <- rownames(expr_mat)
+  } else {
+    pca_mat <- expr_mat
+  }
+  message("get_clusters(): Using first ", max(dims_use), " dimensions for FindNeighbors()..")
+  knn <- FindNeighbors(pca_mat[,dims_use], verbose = TRUE)
+  if(algorithm == "leiden"){
+    alg_num <- 4
+  } else if (algorithm == "louvain"){
+    alg_num <- 1
+  }
+  clusters <- FindClusters(knn$snn, verbose = TRUE, algorithm = alg_num, resolution = resolution)
+  colnames(clusters) <- paste0(algorithm, "_", as.character(resolution))
+  return(clusters)
+}
+
+get_clusters_v1 <- function(expr_mat,
+                            do_pca = TRUE,
+                            scale_pca,
+                            n_pcs = 50,
+                            method = "leiden",
+                            resolution = 0.8){
+                         
   if(do_pca){
     pca_mat <- irlba::prcomp_irlba(expr_mat, n = n_pcs, scale. = scale_pca)$x
     rownames(pca_mat) <- rownames(expr_mat)
