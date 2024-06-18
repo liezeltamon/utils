@@ -11,10 +11,8 @@ suppressPackageStartupMessages({
   require(Seurat)
   require(Signac)
   require(SingleCellExperiment)
-  #require(tidyverse)
+  require(tidyr)
 })
-
-# Braun, ..., Linnarsson, bioRxiv 2022 (https://github.com/linnarsson-lab/developing-human-brain)
 
 check_specificityLabels <- function(mdta_tbl = colData(dta_raw), 
                                     grouping_label = "Clusters",
@@ -24,12 +22,14 @@ check_specificityLabels <- function(mdta_tbl = colData(dta_raw),
   tmp_uniq_perGroupingLabel <- split(tmp_uniq_dt, f = as.character(tmp_uniq_dt[[grouping_label]]))
   class_len_perGroupingLabel <- unname(unlist(lapply(tmp_uniq_perGroupingLabel, FUN = nrow)))
   if(!all(class_len_perGroupingLabel == 1)){
-    warning(paste0(paste(toCheck_labels, collapse = ","), " are NOT unique per ", grouping_label))
+    warning(paste0("Some in ", paste(toCheck_labels, collapse = ","), " are NOT unique per ", grouping_label))
   } else{
     message(paste0(paste(toCheck_labels, collapse = ","), " are unique per ", grouping_label))
   }
 }
   
+# Fleck, ..., Treutlein, Nature 2022 (https://doi.org/10.5281/zenodo.5242913)
+
 FleckBrainOrganoidData <- function(dataset = "atlas_reference/fleck_data/RNA_ATAC_metacells_srt.rds",
                                    possible_labels = c("nowakowski_prediction", "RNA_snn_res.1", "seurat_clusters", "RNA_snn_res.0.8", "pred_class", "pred_region", "RNA_snn_res.2", "patterning_region", "stage", "neuron_type", "is_mesoderm", "neurogen_region", "RNA_snn_res.10", "RNA_snn_res.20", "lineage", "is_root", "lineage_coarse"),
                                    check_labels = FALSE){
@@ -61,6 +61,8 @@ FleckBrainOrganoidData <- function(dataset = "atlas_reference/fleck_data/RNA_ATA
   
 }
 
+# Braun, ..., Linnarsson, bioRxiv 2022 (https://github.com/linnarsson-lab/developing-human-brain)
+
 BraunBrainData <- function(dataset = file.path("atlas_reference", "braun_data", "human_dev_GRCh38-3.0.0.loom"),
                            braun_donor_sex_mapping_path = file.path("data", "atlas_reference", "braun_data", "donor_sex_mapping.tsv"),
                            possible_labels = c("Clusters", "TopLevelCluster", "CellClass", "Age", 
@@ -73,7 +75,7 @@ BraunBrainData <- function(dataset = file.path("atlas_reference", "braun_data", 
                            do_lognormalise = TRUE, logNormCounts_cpu = 1){
   
   dta_path <- file.path("data-raw", dataset)
-  dta_raw <- import(dta_path, type = "SingleCellLoomExperiment")
+  dta_raw <- LoomExperiment::import(dta_path, type = "SingleCellLoomExperiment")
   
   # Add sex column based on Xist expression analysis done by authors (see paper)
   braun_donor_sex_mapping <- read_tsv(braun_donor_sex_mapping_path)
@@ -210,8 +212,92 @@ subsample_data <- function(dta, feature_colnme = "Gene", celllabel_nmes){
   
 }
 
-#library(scRNAseq)
-#bhaduriorganoid_ref <- BhaduriOrganoidData(ensembl = FALSE) # No cell labels
+# Bhaduri...Kriegstein Nature 2020, https://doi.org/10.1038/s41586-020-1962-0
+# Dataset is processed and contains normalised counts only
+
+bhaduri_humanprimarycortical_data <- function(
+    dataset = file.path("data", "atlas_reference", "bhaduri_data"),
+    # Area is not unique per Cluster (recommended label for reference mapping)
+    # Each Cluster have unique identity based on each default possible_labels
+    chosenlabel_for_mapping = "Cluster",
+    possible_labels = c("Class", "State", "Type", "Subtype","Type_Subtype"),
+    remove_outlier_cluster = TRUE
+    ) {
+  
+  #library(scRNAseq)
+  # BhaduriOrganoidData(ensembl = FALSE) available in scRNAseq package but no cell labels
+  
+  #####
+  
+  # Load normalised cell count matrix (189,409 cells)
+      
+  counts_mat <- fread(file.path(dataset, "exprMatrix.tsv.gz"))
+  # counts_mat first column contains genes, remove this column and use genes as row names
+  genes <- counts_mat[,1][[1]]
+  genes <- gsub(".+[|]", "", genes)
+  counts_mat <- counts_mat[,-1]
+  rownames(counts_mat) <- genes
+  
+  cell_meta_df <- read.table(file.path(dataset, "meta.tsv"), header = TRUE, sep = "\t", stringsAsFactors = FALSE, row.names = 1)
+  if (any(is.na(cell_meta_df))) {
+    stop("bhaduri_humanprimarycortical_data: Missing values in downloaded cell metadata.")
+  }
+  
+  # Create seu then convert to sce object
+  # Did this way instead of directly creating sce object because output of function returns index as rownames instead of genes (don't know why), when doing step-by-step all good but when using as function it does not work.
+  
+  if (identical(rownames(cell_meta_df), colnames(counts_mat))) { # Check that cell barcode order identical
+    #seu <- CreateSeuratObject(counts = counts_mat, project = "bhaduri_humanprimarycortical", meta.data = cell_meta_df)
+    dta_seu <- CreateSeuratObject(counts = counts_mat, data = counts_mat, project = "bhaduri_humanprimarycortical_data", meta.data = cell_meta_df)
+    #dta <- SingleCellExperiment(assays = list(logcounts = counts_mat), colData = cell_meta_df)
+    dta <- as.SingleCellExperiment(dta_seu)
+    # Only have normalised data, which was added to counts layer for CreateSeuratObject() to work
+    counts(dta) <- NULL
+  }
+  
+  if (any(duplicated(rownames(dta)))) {
+    stop("Duplicated row/feature names in sce object.")
+  }
+  
+  # Check whether Type-Subtype combination level unique per Cluster
+  
+  dta$Type_Subtype <- colData(dta) %>% as.data.frame %>% 
+    tidyr::unite(col = "Type_Subtype", c("Type", "Subtype"), sep = "_") %>% 
+    pull(Type_Subtype)
+  
+  dta$Area_Cluster <- colData(dta) %>% as.data.frame %>% 
+    tidyr::unite(col = "Area_Cluster", c("Area", "Cluster"), sep = "_") %>% 
+    pull(Area_Cluster)
+  
+  check_specificityLabels(mdta_tbl = colData(dta),
+                          grouping_label = chosenlabel_for_mapping,
+                          toCheck_labels = possible_labels)
+  
+  ## Extra check, each cluster (rows) should have 1 unique Type_Subtype (columns) identity
+  tbl <- table(dta$Cluster, dta$Type_Subtype)
+  if (any(rowSums(tbl > 0) > 1)) {
+    stop("bhaduri_humanprimarycortical_data: Each cluster has more than 1 Type_Subtype identity.")
+  }
+  
+  # Remove outlier cluster
+  if (remove_outlier_cluster) {
+    dta <- dta[,!dta$Subtype %in% c("Outlier", "Low Quality", "Microglia low quality")]
+  } 
+  
+  # Number of unique levels per cell label column
+  cat("Number of unique levels per cell label column:")
+  print(
+    lapply(as.data.frame(colData(dta)[,c(chosenlabel_for_mapping, possible_labels, "Area_Cluster")]), FUN = function(col_label){
+      length(unique(col_label))
+    })
+  )
+  
+  cat("Note that some clusters have the same Type_Subtype identity.")
+  
+  return(dta)
+  
+}
+  
 # heorgan_ref <- HeOrganAtlasData()
 # heorgan_ref <- scuttle::logNormCounts(heorgan_ref)
 # ref <- DarmanisBrainData()
