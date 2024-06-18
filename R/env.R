@@ -3,7 +3,7 @@
 #rprojroot::find_rstudio_root_file() # Has to be in r setup on markdown
 
 suppressPackageStartupMessages(require(devtools))
-set_installPath <- function(path = "package/R"){
+set_installPath <- function(path = file.path("package", "R")){
   devtools::dev_mode(on = TRUE, path = path)
   .libPaths(path, include.site = TRUE)
   message(paste0("env.R: Setting .libPaths() to: ", paste(.libPaths(), collapse = "  ")))
@@ -53,6 +53,8 @@ save_sessioninfo <- function(out_dir, out_id){
 theme_set(theme_classic())
 
 ##### Stash for reference
+# extendPaletteFUN <- colorRampPalette(RColorBrewer::brewer.pal(7, "Spectral"))
+#####
 # if(nCPU > 1){
 #   registerDoParallel(cores = nCPU)
 #   `%op%` <- `%dopar%`

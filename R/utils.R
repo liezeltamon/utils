@@ -57,8 +57,10 @@ as_factor_bySize <- function(x, decreasing = TRUE){
 # src_dir = file.path("data-raw", "2023-10-06_scRNAseq")
 # out_dir = create_dir(file.path("data", "2023-10-06_scRNAseq_renamed"))
 # samp = "CO-NSC1"
-cellranger_renamefastq <- function(src_dir, out_dir, samples, patt = paste0("^", samp, "_R.+_001.fastq.gz$"), rename = TRUE){
+cellranger_renamefastq <- function(src_dir, out_dir, samples, rename = TRUE){
   for(samp in samples){
+    
+    patt = paste0("^", samp, "_R.+_001.fastq.gz$")
     
     samp_paths <- list.files(src_dir, pattern = patt)
     samp_paths <- samp_paths[grepl("_001.fastq.gz$", samp_paths)]
@@ -71,8 +73,10 @@ cellranger_renamefastq <- function(src_dir, out_dir, samples, patt = paste0("^",
       }
       R.utils::createLink(link = file.path(out_dir, pth_renamed),
                           target = file.path(src_dir, pth))
+      message(pth_renamed)
     }
-    
+    message(samp, " link/s created.")
   }
 }
+
 #rm(list=ls())
