@@ -159,3 +159,67 @@ funxAnno <- function(input = list(foreground, background),
 # Combine GO_ALL and KEGG enrichment analyses for a set of genes in one 
 # dataframe.
 #bind_rows(kegg = kegg_out, go = go_out, .id = "source")
+
+# Semantic similarity
+
+go_analysis <- read.delim(system.file("extdata/example.txt", package="rrvgo"))
+go_analysis <- go_analysis[go_analysis$p.adjust < 0.05, ]
+
+library(cowplot)
+library(ggplot2)
+library(org.Hs.eg.db)
+library(rrvgo)
+# Group GO terms based on semantic similarity
+group_terms <- function(go_term_ids, org_db = "org.Hs.eg.db", go_ont, gosesim_method = "Rel",
+                        # Interpreted by rrvgo as "higher values favor choosing the term as the cluster representative"
+                        # Can also use either of reduceSimMatrix(scores = c("uniqueness", "size"))
+                        scores = setNames(-log10(go_analysis$qvalue), go_term_ids),
+                        similarity_thresh = NULL, # 0.75 quantile
+                        plot_path = NULL
+                        ){
+  
+  sim_mx <- calculateSimMatrix(go_term_ids, orgdb = org_db, ont = go_ont, method = gosesim_method)
+  
+  if (is.null(similarity_thresh)) {
+    similarity_thresh <- as.numeric(quantile(sim_mx, probs = 0.7))
+    message("group_terms(): 0.75 quantile of calculateSimMatrix() output as similarity threshold")
+  }
+  reduced_terms <- reduceSimMatrix(sim_mx, scores = scores, 
+                                   threshold = similarity_thresh,
+                                   orgdb = org_db, keytype = "ENTREZID", children = TRUE)
+                               
+  # Plots to assess grouping - use to judge whether similarity threshold should be adjusted
+  
+  pdf(plot_path, height = 20, width = 30)
+  
+  # Plot 1
+  sim_tidy_df <- reshape2::melt(sim_mx)
+  ggplot(sim_tidy_df, aes(value)) +
+    geom_density() +
+    geom_vline(xintercept = similarity_thresh, colour = "darkred") +
+    labs(title = "Red line at similarity threshold") +
+    theme_bw()
+  
+  # Plot 2
+  heatmapPlot(sim_mx, reduced_terms, annotateParent = TRUE, annotationLabel = "parentTerm",
+              # Accepts other parameters sent to pheatmap::pheatmap()
+              fontsize = 6)
+  
+  # Plot 3
+  scatterPlot(sim_mx, reduced_terms, algorithm = "pca")
+  # Plot 4
+  treemapPlot(reduced_terms)
+  # Plot 5
+  wordcloudPlot(reduced_terms, min.freq = 1, colors = "black")
+  
+  dev.off()
+  
+  # Save
+  
+  # Same order as input go term ids, so might contain NAs if some terms were remove and not present in reduced_terms
+  grouped_terms = merge(data.frame(go = go_term_ids), reduced_terms, by = "go", all = TRUE)
+  outputs <- list(grouped_terms = grouped_terms, plots = p_lst)
+  
+  return(outputs)
+    
+}
