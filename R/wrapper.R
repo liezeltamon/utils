@@ -165,6 +165,8 @@ get_clusters <- function(expr_mat,
                          # FindClusters() parameters
                          resolution = 0.8,
                          algorithm = "louvain",
+                         # FindClusters(method = "matrix") by default, change to "igraph" if having memory issues, see https://github.com/satijalab/seurat/issues/2294
+                         method_leiden = "matrix", 
                          method = "leiden" # Deprecated, method confused with algorithm argument in FindClusters()
                          ){
   warning("Need to fix when inputting expression matrix instead.")
@@ -182,7 +184,7 @@ get_clusters <- function(expr_mat,
   } else if (algorithm == "louvain"){
     alg_num <- 1
   }
-  clusters <- FindClusters(knn$snn, verbose = TRUE, algorithm = alg_num, resolution = resolution)
+  clusters <- FindClusters(knn$snn, verbose = TRUE, algorithm = alg_num, resolution = resolution, method = method_leiden)
   colnames(clusters) <- paste0(algorithm, "_", as.character(resolution))
   return(clusters)
 }
