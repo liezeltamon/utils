@@ -126,3 +126,118 @@ run_de_tests_tradeseq <- function(
   return(outputs)
   
 }
+
+# Bin cells (e.g. based on pseudotime) and calculate a value per bin
+get_value_per_bin <- function (mx, bins, fun_per_bin = mean) {
+  
+  message('function1(): Set fun_per_bin = "percent_expressing" to use built-in function')
+  
+  if (!is.factor(bins)) {
+    warning("function1(): bins should an ordered factor. Converting...")
+    bins <- factor(as.character(bins))
+  }
+  
+  if (identical(fun_per_bin, "percent_expressing")) {
+    fun_per_bin <- function (x) {
+      sum(x > 0) / length(x) * 100
+    }
+  }
+  
+  mx_transposed <- t(mx)
+  mx_transposed_agg <- aggregate(as.matrix(mx_transposed), by = list(bins = bins), FUN = fun_per_bin)
+  value_per_bin_mx <- t(mx_transposed_agg[,colnames(mx_transposed_agg) != "bins"])
+  
+}
+
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(scales)
+library(tibble)
+library(tidyr)
+
+# Plot
+plot_value_per_bin <- function (fill_mx, colour_mx, row_features_order, row_group, 
+                                scale_fill = TRUE, scale_colour = TRUE) {
+  
+  if (!identical(dimnames(fill_mx), dimnames(colour_mx))) {
+    stop("function2(): Dimnames of fill_mx and colour_mx not identical")
+    rm(fill_mx)
+  } else {
+    row_features_frommx <- rownames(fill_mx)
+  }
+  
+  # Scale
+  
+  scale_fun <- function(data){
+    (data - mean(data)) / sd(data)
+    #min_value <- min(data)
+    #max_value <- max(data)
+    #scaled_data <- (data - min_value) / (max_value - min_value)
+  }
+  
+  if (scale_fill) {
+    fill_mx <- t(apply(fill_mx, MARGIN = 1, scale_fun))
+    fill_mx[!is.finite(fill_mx)] <- NA
+    rownames(fill_mx) <- row_features_frommx
+    colnames(fill_mx) <- as.character(1:ncol(fill_mx))
+  }
+  
+  if (scale_colour) {
+    colour_mx <- t(apply(colour_mx, MARGIN = 1, scale_fun))
+    colour_mx[!is.finite(colour_mx)] <- NA
+    rownames(colour_mx) <- row_features_frommx
+    colnames(colour_mx) <- as.character(1:ncol(colour_mx))
+  }
+  
+  # Prepare plot data
+  
+  fill_df <- as.data.frame(fill_mx)
+  fill_df$group <- row_group
+  tidy_df <- fill_df %>% 
+    rownames_to_column("feature") %>% 
+    pivot_longer(-c(feature, group), names_to = "bin", values_to = "value_fill") %>% 
+    unite("feature_bin", feature, bin, sep = "_", remove = FALSE)
+  tidy_df$bin <- factor(tidy_df$bin, levels = setdiff(colnames(fill_df), "group"))
+  tidy_df$feature <- factor(tidy_df$feature, levels = row_features_order)
+  
+  colour_df <- colour_mx %>% 
+    as.data.frame() %>% 
+    rownames_to_column("feature") %>% 
+    pivot_longer(-feature, names_to = "bin") %>% 
+    unite("feature_bin", feature, bin, sep = "_", remove = FALSE)
+  
+  if (identical(tidy_df$feature_bin, colour_df$feature_bin)) {
+    tidy_df$value_colour <- colour_df$value
+    rm(colour_df)
+  }
+  
+  # Heatmap
+  
+  p_params <- list(fill = list(pal_colours = brewer.pal(11, "RdYlBu")),
+                   colour = list(pal_colours = rev(brewer.pal(9, "Greys"))))
+  
+  for (aest in names(p_params)) {
+    
+    p_params[[aest]]$extendPaletteFUN <- colorRampPalette(p_params[[aest]]$pal_colours)
+    p_params[[aest]]$vals_range <- range(boxplot.stats(tidy_df[[paste0("value_", aest)]])$stats)
+    p_params[[aest]]$breakvals <- unique(seq(p_params[[aest]]$vals_range[1],
+                                             max(p_params[[aest]]$vals_range[2]), length.out = 50))
+    p_params[[aest]]$plot_colors <- rev(p_params[[aest]]$extendPaletteFUN(
+      length(p_params[[aest]]$breakvals) - 1
+    ))
+    
+  }
+  
+  p <- ggplot(tidy_df, aes(x = bin, y = feature, fill = value_fill, color = value_colour)) +
+    geom_tile(size = 0.5) +  # size controls the thickness of the lines
+    scale_fill_gradientn(colors = p_params$fill$plot_colors, breaks = p_params$fill$breakvals, 
+                         limits = p_params$fill$vals_range, oob = scales::squish) +
+    scale_colour_gradientn(colors = p_params$colour$plot_colors, breaks = p_params$colour$breakvals, 
+                           limits = p_params$colour$vals_range, oob = scales::squish) +
+    facet_grid(group ~ ., scales = "free_y") +
+    theme_minimal()
+  
+  return(p)
+  
+}
