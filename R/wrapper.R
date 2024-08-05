@@ -1,15 +1,16 @@
 suppressPackageStartupMessages({
-  require(BiocParallel)
-  require(DelayedMatrixStats)
-  require(DropletUtils)
-  require(clustree)
-  require(irlba)
-  require(scater)
-  require(scran)
-  require(Seurat)
-  require(tidyverse)
+  library(BiocParallel)
+  library(bluster)
+  library(DelayedMatrixStats)
+  library(DropletUtils)
+  library(clustree)
+  library(irlba)
+  library(scater)
+  library(scran)
+  library(Seurat)
+  library(tidyverse)
   # For using leidenalg python module for Seurat::FindClusters(), need RETICULATE_PYTHON to be set to python environment path in .Renviron
-  require(reticulate)
+  library(reticulate)
   reticulate::import("numpy")
   reticulate::import("pandas")
   reticulate::import("leidenalg")
@@ -156,7 +157,7 @@ get_denoisedPCs <- function(expr_mat, subset.row, block = NULL, seed = 290){
 }
 
 # Modified from quadbio/organoid_regulomes
-get_clusters <- function(expr_mat,
+get_clusters <- function(expr_mat, # observations x variables
                          do_pca,
                          dims_use,
                          # If applying pca on input expression matrix
@@ -169,7 +170,11 @@ get_clusters <- function(expr_mat,
                          method_leiden = "matrix", 
                          method = "leiden" # Deprecated, method confused with algorithm argument in FindClusters()
                          ){
+  
   warning("Need to fix when inputting expression matrix instead.")
+  
+  resolution <- sort(unique(resolution))
+  
   if(do_pca){
     message("get_clusters(): Applying pca on input matrix...")
     pca_mat <- irlba::prcomp_irlba(expr_mat, n = n_pcs, scale. = scale_pca)$x
@@ -178,15 +183,37 @@ get_clusters <- function(expr_mat,
     pca_mat <- expr_mat
   }
   message("get_clusters(): Using first ", max(dims_use), " dimensions for FindNeighbors()..")
-  knn <- FindNeighbors(pca_mat[,dims_use], verbose = TRUE)
-  if(algorithm == "leiden"){
-    alg_num <- 4
-  } else if (algorithm == "louvain"){
-    alg_num <- 1
+  pca_mat <- pca_mat[,dims_use]
+  knn <- FindNeighbors(pca_mat, verbose = TRUE)
+  
+  if (algorithm %in% c("leiden", "louvain")) {
+    
+    if(algorithm == "leiden"){
+      alg_num <- 4
+    } else if (algorithm == "louvain"){
+      alg_num <- 1
+    }
+    clusters <- FindClusters(knn$snn, verbose = TRUE, algorithm = alg_num, resolution = resolution, method = method_leiden)
+    
+  } else if (algorithm == "HclustParam") {
+    
+    clusters <- as.data.frame(matrix(NA, nrow = nrow(pca_mat), ncol = length(resolution), 
+                                     dimnames = list(rownames(pca_mat), as.character(resolution))))
+    hclust_tree <- bluster::clusterRows(pca_mat, BLUSPARAM = HclustParam(method = "ward.D2"), full = TRUE)$objects$hclust
+    for (num_cluster in resolution) {
+      
+      x <- cutree(hclust_tree, k = num_cluster)
+      clusters[, as.character(num_cluster)] <- factor(as.character(x), levels = as.character(sort(unique(x))))
+      
+    }
+   
+  } else {
+    stop("get_clusters(): Invalid algorithm")
   }
-  clusters <- FindClusters(knn$snn, verbose = TRUE, algorithm = alg_num, resolution = resolution, method = method_leiden)
+  
   colnames(clusters) <- paste0(algorithm, "_", as.character(resolution))
   return(clusters)
+  
 }
 
 get_clusters_v1 <- function(expr_mat,
