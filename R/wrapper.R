@@ -252,3 +252,16 @@ get_clustree <- function(clusters_mat, prefix, ggsave_path = NULL, height = 30, 
 }
 
 # quadbio/organoid_regulomes - https://github.com/quadbio/organoid_regulomes/blob/1e3b32f067d5d190e8ba4709e34a3ae243b5f9db/utils/scripts/wrapper.R
+
+# Modified to return rownames
+UpSetRfromList_rowsnamed <- function(input){
+  # UpSetR::fromList code
+  elements <- unique(unlist(input))
+  data <- unlist(lapply(input, function(x){x <- as.vector(match(elements, x))}))
+  data[is.na(data)] <- as.integer(0); data[data != 0] <- as.integer(1)
+  data <- data.frame(matrix(data, ncol = length(input), byrow = F))
+  rownames(data) <- elements # Added
+  data <- data[which(rowSums(data) !=0), ]
+  names(data) <- names(input)
+  return(data)
+}
