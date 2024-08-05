@@ -6,6 +6,7 @@
 # LIBRARIES & DEPENDENCIES * LIBRARIES & DEPENDENCIES * LIBRARIES & DEPENDENCIES 
 ################################################################################
 # library(bitr)
+# library(clusterProfiler)
 # library(DOSE) # for setReadable()
 # library(org.Hs.eg.db)
 # For help:
@@ -165,10 +166,10 @@ funxAnno <- function(input = list(foreground, background),
 go_analysis <- read.delim(system.file("extdata/example.txt", package="rrvgo"))
 go_analysis <- go_analysis[go_analysis$p.adjust < 0.05, ]
 
-library(cowplot)
-library(ggplot2)
-library(org.Hs.eg.db)
-library(rrvgo)
+# library(cowplot)
+# library(ggplot2)
+# library(org.Hs.eg.db)
+# library(rrvgo)
 # Group GO terms based on semantic similarity
 group_terms <- function(go_term_ids, org_db = "org.Hs.eg.db", go_ont, gosesim_method = "Rel",
                         # Interpreted by rrvgo as "higher values favor choosing the term as the cluster representative"
@@ -217,9 +218,11 @@ group_terms <- function(go_term_ids, org_db = "org.Hs.eg.db", go_ont, gosesim_me
   # Save
   
   # Same order as input go term ids, so might contain NAs if some terms were remove and not present in reduced_terms
-  grouped_terms = merge(data.frame(go = go_term_ids), reduced_terms, by = "go", all = TRUE)
-  outputs <- list(grouped_terms = grouped_terms, plots = p_lst)
+  grouped_terms = merge(data.frame(go = go_term_ids), reduced_terms, by = "go", all.x = TRUE)
+  rownames(grouped_terms) <- grouped_terms$go
+  if (identical(sort(rownames(grouped_terms)), sort(go_term_ids))) {
+    grouped_terms <- grouped_terms[go_term_ids,]
+  }
+  return(grouped_terms)
   
-  return(outputs)
-    
 }
