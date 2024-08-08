@@ -49,23 +49,43 @@ plot_slingshot_curves <- function(
       embedded <- data
     }
     curves <- slingCurves(embedded, as.df = FALSE)
-    p_base <- plotReducedDim(data, colour_by = colour_by, dimred = dimred_name)
     
   } else {
     stop("plot_slingshot_curves(): Code for handling non-SCE input data not done yet. Use base R as in vignette.")
   }
   
   # Modified from OSCA book
-  curves_len <- length(curves)
+  p_lst <- list()
+  
+  curves_len <- length(curves) # i.e. number of lineages
+  if (grepl("slingPseudotime", colour_by) & curves_len > 1) {
+    data$slingPseudotime_avelineages <- rowMeans(slingPseudotime(sce), na.rm = TRUE)
+    colour_by = "slingPseudotime_avelineages"
+  }
+  p_combined <- plotReducedDim(data, colour_by = colour_by, dimred = dimred_name)
+  
   for (i in 1:curves_len) {
+    
     path <- curves[[i]]
     curve_path <- data.frame(path$s[path$ord,])
     colnmes <- colnames(curve_path)
-    p <- p_base + 
+    
+    if (grepl("slingPseudotime", colour_by)) {
+      colour_by = paste0("slingPseudotime_", i)
+    }
+    
+    p_lst[[i]] <- plotReducedDim(data, colour_by = colour_by, dimred = dimred_name) +
       geom_path(data = curve_path, aes(x = .data[[colnmes[1]]], y = .data[[colnmes[2]]]), size = 1.2)
+    
+    p_combined <- p_combined + 
+      geom_path(data = curve_path, aes(x = .data[[colnmes[1]]], y = .data[[colnmes[2]]]), size = 1.2)
+    
   }
   
-  return(p)
+  p_lst[[curves_len + 1]] <- p_combined
+  p_grid <- plot_grid(plotlist = p_lst, nrow = 1)
+  
+  return(p_grid)
   
 }
 
