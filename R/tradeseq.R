@@ -164,7 +164,7 @@ plot_value_per_bin <- function (fill_mx, colour_mx, row_features_order, row_grou
     stop("function2(): Dimnames of fill_mx and colour_mx not identical")
     rm(fill_mx)
   } else {
-    row_features_frommx <- rownames(fill_mx)
+    dimnames_frommx <- dimnames(fill_mx)
   }
   
   # Scale
@@ -179,21 +179,20 @@ plot_value_per_bin <- function (fill_mx, colour_mx, row_features_order, row_grou
   if (scale_fill) {
     fill_mx <- t(apply(fill_mx, MARGIN = 1, scale_fun))
     fill_mx[!is.finite(fill_mx)] <- NA
-    rownames(fill_mx) <- row_features_frommx
-    colnames(fill_mx) <- as.character(1:ncol(fill_mx))
   }
   
   if (scale_colour) {
     colour_mx <- t(apply(colour_mx, MARGIN = 1, scale_fun))
     colour_mx[!is.finite(colour_mx)] <- NA
-    rownames(colour_mx) <- row_features_frommx
-    colnames(colour_mx) <- as.character(1:ncol(colour_mx))
   }
+  
+  dimnames(fill_mx) <- dimnames_frommx
+  dimnames(colour_mx) <- dimnames_frommx
   
   # Prepare plot data
   
   fill_df <- as.data.frame(fill_mx)
-  fill_df$group <- row_group
+  fill_df$group <- factor(row_group, levels = as.character(unique(row_group)))
   tidy_df <- fill_df %>% 
     rownames_to_column("feature") %>% 
     pivot_longer(-c(feature, group), names_to = "bin", values_to = "value_fill") %>% 
@@ -235,7 +234,8 @@ plot_value_per_bin <- function (fill_mx, colour_mx, row_features_order, row_grou
                          limits = p_params$fill$vals_range, oob = scales::squish) +
     scale_colour_gradientn(colors = p_params$colour$plot_colors, breaks = p_params$colour$breakvals, 
                            limits = p_params$colour$vals_range, oob = scales::squish) +
-    facet_grid(group ~ ., scales = "free_y") +
+    #facet_grid(group ~ ., scales = "free_y") +
+    theme(axis.text.x = element_text(angle = 90), legend.text = element_text(size = 1)) +
     theme_minimal()
   
   return(p)
