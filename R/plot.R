@@ -1,3 +1,6 @@
+# Extending palettes
+extendPaletteFUN <- colorRampPalette(RColorBrewer::brewer.pal(7, "Spectral"))
+
 # Reference for making Sankey diagram using flipPlots package
 edges <- as.data.frame(table(as.data.frame(is_geqthreshold_mx)))
   criteria_len <- ncol(edges)
