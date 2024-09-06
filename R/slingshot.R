@@ -24,7 +24,30 @@ run_slingshot <- function(
   if (is.null(labels)) {
     output <- slingshot(data, reducedDim = dimred_name, start.clus = start.clus, end.clus = end.clus, approx_points = approx_points, ...)
   } else {
+    
+    # data_orig <- data
+    # coldata_orig <- colData(data)
+    
+    labels <- as.character(labels)
+    labels_tally <- table(labels)
+    if (any(labels_tally == 1)) {
+      drop_ind <- which(as.character(labels) == names(which(labels_tally == 1)))
+      data <- data[, -drop_ind]
+      labels <- labels[-drop_ind]
+      message("run_slingshot(): Removing cluster with 1 member")
+    }
     output <- slingshot(data, clusterLabels = labels, reducedDim = dimred_name, start.clus = start.clus, end.clus = end.clus, approx_points = approx_points, ...)
+    
+    # If wanting output to still have the dropped row, not perfect because slingshot column for dropped row can't be set to NA
+    # drop_append <- colData(output)[1,]
+    # drop_append[,-which(colnames(drop_append) == "slingshot")] <- NA 
+    # rownames(drop_append) <- rownames(coldata_orig)[drop_ind]
+    # output_coldata <- rbind(drop_append, colData(output))[rownames(coldata_orig),]
+    # output_coldata[drop_ind, colnames(coldata_orig)] <- coldata_orig[drop_ind,]
+    # 
+    # output <- data_orig
+    # colData(output) <- output_coldata
+    
   }
   
   return(output)
@@ -57,11 +80,9 @@ plot_slingshot_curves <- function(
   # Modified from OSCA book
   p_lst <- list()
   
+  data$slingPseudotime_meanlineages <- rowMeans(slingPseudotime(data), na.rm = TRUE)
   curves_len <- length(curves) # i.e. number of lineages
-  if (grepl("slingPseudotime", colour_by) & curves_len > 1) {
-    data$slingPseudotime_avelineages <- rowMeans(slingPseudotime(sce), na.rm = TRUE)
-    colour_by = "slingPseudotime_avelineages"
-  }
+  if (grepl("slingPseudotime", colour_by)) { colour_by = "slingPseudotime_meanlineages" }
   p_combined <- plotReducedDim(data, colour_by = colour_by, dimred = dimred_name)
   
   for (i in 1:curves_len) {
