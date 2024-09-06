@@ -36,6 +36,7 @@ plot_variableContribution <- function(sce,
 # Integrate using different methods
 
 #library(harmony)
+#library(plyr)
 #library(Seurat)
 integrate_data <- function(obj, # Seurat object
                            dimred_name,
@@ -51,8 +52,40 @@ integrate_data <- function(obj, # Seurat object
                            seurat_assay = "RNA",
                            norm_method = "LogNormalize",
                            scaledata_covars = NULL) {
-  
+
   DefaultAssay(obj) <- seurat_assay
+
+  # Remove batch_vars and split vars with 1 level
+  vars_unique <- unique(unlist(batch_vars, split_vars))
+  is_vars_1lvl <- unlist(lapply(obj[[vars_unique]], function(col) {
+    length(unique(col)) == 1
+  }))
+  vars_1lvl <- names(which(is_vars_1lvl))
+
+  if (length(vars_1lvl) > 0) {
+
+    batch_vars <- unique(lapply(batch_vars, function(vars_set){
+      vars_trimmed <- setdiff(vars_set, vars_1lvl)
+      if (length(vars_trimmed) == 0){
+        return(NULL)
+      } else {
+        return(vars_trimmed)
+      }
+    }))
+    batch_vars <- plyr::compact(batch_vars)
+
+    split_vars <- setdiff(split_vars, vars_1lvl)
+
+    message("integrate_data(): Removing batch_vars and split_vars with 1 level")
+    if (length(batch_vars) == 0) {
+      warning("integrate_data(): No batch_vars left. Skipping.")
+      batch_vars <- NULL
+    } else if (length(split_vars) == 0) {
+      warning("integrate_data(): No split_vars left. Skipping.")
+      split_vars <- NULL
+    }
+
+  }
   
   # Method 1: RNA assay + `RunHarmony()`
   
@@ -191,6 +224,9 @@ plot_label_groupdiversity <- function(label, group_df, num_col = 3, summarise_gr
     # Coefficient of variation because the proportion given equal distribution of labels across groups depends on number of unique group levels. If group has 2 levels, equal distribution means 0.5 proportion, but if group has 10 levels, equal distribution means 0.1 proportion.
     plot_title = paste0(group_name, ": ", summarise_group_fun, " cv = ", round(summary_groupvar[group_ind], 4), "; Given equal distribution, proportion per level = ", 1 / length(unique(group)))
     
+    pheatmap_color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdYlBu")))(100) # Default
+    if (length(unique(prop_tbl)) == 1) {prop_tbl <- tbl}
+
     if (same_scale) {
       
       extendPaletteFUN = colorRampPalette(brewer.pal(11, "Spectral"))
@@ -199,7 +235,7 @@ plot_label_groupdiversity <- function(label, group_df, num_col = 3, summarise_gr
       p_lst[[group_ind]] <- pheatmap::pheatmap(prop_tbl, display_numbers = tbl, cluster_rows = FALSE, cluster_cols = FALSE, main = plot_title, fontsize = 5, silent = TRUE, breaks = breakvals, color = rev(extendPaletteFUN(length(breakvals) - 1)))[[4]] # Access for plot_grid to work
       
     } else {
-      p_lst[[group_ind]] <- pheatmap::pheatmap(prop_tbl, display_numbers = tbl, cluster_rows = FALSE, cluster_cols = FALSE, main = plot_title, fontsize = 5, silent = TRUE)[[4]] # Access for plot_grid to work
+      p_lst[[group_ind]] <- pheatmap::pheatmap(prop_tbl, display_numbers = tbl, cluster_rows = FALSE, cluster_cols = FALSE, main = plot_title, fontsize = 5, silent = TRUE, color = pheatmap_color)[[4]] # Access for plot_grid to work
     }
     
     
