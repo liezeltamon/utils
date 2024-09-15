@@ -1,6 +1,9 @@
 # Extending palettes
 extendPaletteFUN <- colorRampPalette(RColorBrewer::brewer.pal(7, "Spectral"))
 
+# Raincloud plot for informative distribution plots
+https://medium.com/@amorimfranchi/raincloud-plots-for-clear-precise-and-efficient-data-communication-4c71d0a37c23
+
 # Reference for making Sankey diagram using flipPlots package
 edges <- as.data.frame(table(as.data.frame(is_geqthreshold_mx)))
   criteria_len <- ncol(edges)
