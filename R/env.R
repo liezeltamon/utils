@@ -41,7 +41,7 @@ use_condaenv <- function(envname,
 }
 
 create_dir <- function(path){
-  if(!dir.exists(path)){ dir.create(path) }
+  if(!dir.exists(path)){ dir.create(path, recursive = TRUE) }
   return(path)
 }
 
