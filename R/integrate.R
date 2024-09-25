@@ -24,7 +24,7 @@ plot_variableContribution <- function(sce,
   
   # Remove covars with <= 2 levels
   remove_covars <- names(which(
-    sapply(covars, USE.NAMES = TRUE, simplify = TRUE, function(x) length(unique(sce_merged_notinteg[[x]]))) <= 2
+    sapply(covars, USE.NAMES = TRUE, simplify = TRUE, function(var_nme) length(unique(sce[[var_nme]]))) <= 2
   ))
   if (length(remove_covars > 0)) {
     covars <- setdiff(covars, remove_covars)
