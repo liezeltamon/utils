@@ -22,6 +22,15 @@ plot_variableContribution <- function(sce,
                                       plot_title = NULL
                                       ){
   
+  # Remove covars with <= 2 levels
+  remove_covars <- names(which(
+    sapply(covars, USE.NAMES = TRUE, simplify = TRUE, function(x) length(unique(sce_merged_notinteg[[x]]))) <= 2
+  ))
+  if (length(remove_covars > 0)) {
+    covars <- setdiff(covars, remove_covars)
+    warning("plot_variableContribution(): Removing covars with <= 2 levels")
+  }
+  
   # Per-gene variance explained by a variable
   covars_varexp <- scater::getVarianceExplained(sce, variables = covars, subset_row = subset_row, BPPARAM = MulticoreParam(nCPU))
   p_varexp <- scater::plotExplanatoryVariables(covars_varexp, nvars_to_plot = Inf) + ggtitle(plot_title)
