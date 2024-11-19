@@ -185,6 +185,7 @@ group_terms <- function(go_term_ids, org_db = "org.Hs.eg.db", go_ont, gosesim_me
     similarity_thresh <- as.numeric(quantile(sim_mx, probs = 0.7))
     message("group_terms(): 0.75 quantile of calculateSimMatrix() output as similarity threshold")
   }
+  # Description of reduceSimMatrix() output - https://github.com/ssayols/rrvgo/issues/24
   reduced_terms <- reduceSimMatrix(sim_mx, scores = scores, 
                                    threshold = similarity_thresh,
                                    orgdb = org_db, keytype = "ENTREZID", children = TRUE)
@@ -211,7 +212,7 @@ group_terms <- function(go_term_ids, org_db = "org.Hs.eg.db", go_ont, gosesim_me
   # Plot 4
   treemapPlot(reduced_terms)
   # Plot 5
-  wordcloudPlot(reduced_terms, min.freq = 1, colors = "black")
+  #wordcloudPlot(reduced_terms, min.freq = 1, colors = "black")
   
   dev.off()
   
