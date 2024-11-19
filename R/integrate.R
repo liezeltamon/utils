@@ -8,6 +8,7 @@ library(pheatmap)
 library(RColorBrewer)
 library(scater)
 library(Seurat)
+library(BiocParallel)
 
 # Diagnose batch effects from covariates
 
