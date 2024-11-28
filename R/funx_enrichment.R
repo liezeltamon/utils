@@ -176,19 +176,24 @@ group_terms <- function(go_term_ids, org_db = "org.Hs.eg.db", go_ont, gosesim_me
                         # Can also use either of reduceSimMatrix(scores = c("uniqueness", "size"))
                         scores = setNames(-log10(go_analysis$qvalue), go_term_ids),
                         similarity_thresh = NULL, # 0.75 quantile
+                        keytype = "ENTREZID",
                         plot_path = NULL
                         ){
   
   sim_mx <- calculateSimMatrix(go_term_ids, orgdb = org_db, ont = go_ont, method = gosesim_method)
   
   if (is.null(similarity_thresh)) {
-    similarity_thresh <- as.numeric(quantile(sim_mx, probs = 0.7))
-    message("group_terms(): 0.75 quantile of calculateSimMatrix() output as similarity threshold")
+    
+    similarity_thresh <- 0.7 # Medium based on ?reduceSimMatrix help page
+    message("group_terms(): similarity_thresh = ", similarity_thresh,  " default value of reduceSimMatrix(threshold)")
+    #similarity_thresh <- as.numeric(quantile(sim_mx, probs = 0.7))
+    #message("group_terms(): 0.75 quantile of calculateSimMatrix() output as similarity threshold")
+    
   }
   # Description of reduceSimMatrix() output - https://github.com/ssayols/rrvgo/issues/24
   reduced_terms <- reduceSimMatrix(sim_mx, scores = scores, 
                                    threshold = similarity_thresh,
-                                   orgdb = org_db, keytype = "ENTREZID", children = TRUE)
+                                   orgdb = org_db, keytype = keytype, children = TRUE)
                                
   # Plots to assess grouping - use to judge whether similarity threshold should be adjusted
   
