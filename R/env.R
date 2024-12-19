@@ -1,8 +1,8 @@
 #message("env.R: Setting working directory to project directory...")
-#suppressPackageStartupMessages(require(rprojroot))
+#suppressPackageStartupMessages(library(rprojroot))
 #rprojroot::find_rstudio_root_file() # Has to be in r setup on markdown
 
-suppressPackageStartupMessages(require(devtools))
+suppressPackageStartupMessages(library(devtools))
 set_installPath <- function(path = file.path("package", "R")){
   devtools::dev_mode(on = TRUE, path = path)
   .libPaths(path, include.site = TRUE)
@@ -13,16 +13,16 @@ set_installPath <- function(path = file.path("package", "R")){
 ###
 
 suppressPackageStartupMessages({
-  require(doParallel)
-  require(ggplot2)
-  require(reticulate)
-  require(sessioninfo)
+  library(ggplot2)
+  library(reticulate)
+  library(sessioninfo)
 })
 
 options(warnPartialMatchDollar = TRUE)
 options(warn = 1)
 options(bitmapType = "cairo")
 
+# library(reticulate)
 use_condaenv <- function(envname,
                          packages = NULL,
                          channel = c("defaults", "conda-forge", "bioconda"),
@@ -45,16 +45,19 @@ create_dir <- function(path){
   return(path)
 }
 
+#library(sessioninfo)
 save_sessioninfo <- function(out_dir, out_id){
   sessioninfo::session_info(to_file = paste0(out_dir, "/", out_id, "_session-info.txt"))
   sessioninfo::session_info()
 }
 
+#library(ggplot2)
 theme_set(theme_classic())
 
 ##### Stash for reference
-# extendPaletteFUN <- colorRampPalette(RColorBrewer::brewer.pal(7, "Spectral"))
-#####
+
+#library(foreach)
+#library(doParallel)
 # if(nCPU > 1){
 #   registerDoParallel(cores = nCPU)
 #   `%op%` <- `%dopar%`
@@ -62,4 +65,3 @@ theme_set(theme_classic())
 # } else {
 #   `%op%` <- `%do%`
 # }
-#####
