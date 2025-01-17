@@ -1,4 +1,5 @@
 suppressPackageStartupMessages({
+  library(assertthat)
   library(BiocParallel)
   library(bluster)
   library(DelayedMatrixStats)
@@ -10,10 +11,11 @@ suppressPackageStartupMessages({
   library(Seurat)
   library(tidyverse)
   # For using leidenalg python module for Seurat::FindClusters(), need RETICULATE_PYTHON to be set to python environment path in .Renviron
-  library(reticulate)
-  reticulate::import("numpy")
-  reticulate::import("pandas")
-  reticulate::import("leidenalg")
+  #library(reticulate)
+  # Ignore error in case no env with these packages yet
+  try(reticulate::import("numpy"))
+  try(reticulate::import("pandas"))
+  try(reticulate::import("leidenalg"))
 })
 
 # Check
@@ -73,17 +75,45 @@ plot_ambientPval <- function(emptyDrops_out, emptyDrops_lower = 100, seed = 290)
   return(p)
 }
   
-do_basicQC <- function(counts_mat = NULL, sce = NULL){ # Expects rownames to be gene symbols
-  if(is.null(counts_mat)){ counts_mat <- counts(sce) }
-  mito_genes <- rownames(counts_mat)[grep("^MT-", rownames(counts_mat))]
-  ribo_genes <- rownames(counts_mat)[grep("^RP[SL]", rownames(counts_mat))]
-  qc_tbl <- perCellQCMetrics(counts_mat, subsets = list(mito_genes = mito_genes, ribo_genes = ribo_genes))
+do_basicQC <- function(counts_mat = NULL, 
+                       sce = NULL,
+                       feature_names = NULL, # If NULL, uses row names
+                       ...){
   
-  if(!is.null(sce)){
-    colData(sce) <- cbind(colData(sce), qc_tbl); return(sce)
+  assert_that(!(!is.null(counts_mat) & !is.null(sce)),
+              msg = "do_basicQC(): Supply either counts_mat or sce")
+  
+  if (!is.null(sce)) {
+    mainExpName(sce) <- "Gene Expression"
+    if (is.null(feature_names)) {feature_names <- rownames(sce)}
+    input_x <- sce
+    rownames(input_x) <- feature_names
+  }
+  
+  if (!is.null(counts_mat)) {
+    if (is.null(feature_names)) {feature_names <- rownames(counts_mat)}
+    input_x <- counts_mat
+  }
+  
+  assert_that(!any(duplicated(feature_names)),
+              msg = "do_basicQC(): Feature names must be unique")
+  mito_genes <- feature_names[grep("^MT-", feature_names)]
+  ribo_genes <- feature_names[grep("^RP[SL]", feature_names)]
+  
+  if (is.null(counts_mat)) { counts_mat <- counts(sce) }
+  
+  qc_tbl <- perCellQCMetrics(input_x,
+                             subsets = list(mito_genes = mito_genes, 
+                                            ribo_genes = ribo_genes),
+                             ...)
+  
+  if (!is.null(sce)) {
+    colData(sce) <- cbind(colData(sce), qc_tbl)
+    return(sce)
   } else {
     return(qc_tbl)
   }
+  
 }
 
 plot_basicQC <- function(qc_tbl, group = "Sample", metrics = c("sum", "detected"), plot_type = "violin", transform_log10 = TRUE){
@@ -109,7 +139,84 @@ plot_basicQC <- function(qc_tbl, group = "Sample", metrics = c("sum", "detected"
     stop("plot_basicQC(): plot_type not recognised.")
   }
   
+  p <- p +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0))
+  
   return(p)
+}
+
+get_outliers <- function (x,
+                          # If NULL, treat x as one sample.
+                          # Rule of thumb is get outliers per sample so we assume that
+                          # the sample are mostly good cells. If data hashed, dehash then
+                          # identify outliers per sample, this way each sample assumed to be
+                          # mostly good cells.
+                          sample_ids = NULL,
+                          is_outlier_fields = NULL,
+                          add_sum_fields = "altexps_Antibody Capture_sum",
+                          add_detected_fields = "altexps_Antibody Capture_detected",
+                          is_outlier_nmads = 3
+                          ) {
+  
+  
+  if (is.null(is_outlier_fields)) {
+    is_outlier_fields <- c("low_lib_size",
+                           "low_n_features",
+                           "high_subsets_mito_genes_percent")
+  }
+  
+  # Initiate output matrix
+  
+  assert_that(!any(duplicated(rownames(x))),
+              msg = "get_outliers(): Duplicated barcodes")
+  outlier_mx <- matrix(NA, nrow = nrow(x), ncol = length(is_outlier_fields) + 1,
+                       dimnames = list(rownames(x),
+                                       c(is_outlier_fields, "outlier")))
+  
+  # Identify outlier per level of sample_id column
+  
+  for (sample_id_lvl in unique(sample_ids)) {
+    
+    message("get_outliers(): sample_id = ", sample_id_lvl, "...")
+    
+    lvl_inds <- which(sample_ids == sample_id_lvl)
+    x_sub <- x[lvl_inds, ]
+    out_a <- scuttle::perCellQCFilters(x_sub, sub.fields = TRUE, nmads = is_outlier_nmads)
+    out_a$discard <- NULL
+    
+    # Apply on additional sum and detected fields
+    
+    #add_sum_fields <- sort(grep("_sum", colnames(x), value = TRUE))
+    #add_detected_fields <- sort(grep("_detected", colnames(x), value = TRUE))
+    len <- unique(length(add_sum_fields), length(add_detected_fields))
+    out_b_lst <- lapply(1:len, function (i) {
+      
+      out_tmp <- scuttle::perCellQCFilters(x = x_sub,
+                                           sum.field = add_sum_fields[i],
+                                           detected.field = add_detected_fields[i],
+                                           sub.fields = NULL,
+                                           nmads = is_outlier_nmads
+                                           )
+      out_tmp$discard <- NULL
+      colnames(out_tmp) <- paste0(c(add_sum_fields[i], add_detected_fields[i]), ".",
+                                  colnames(out_tmp))
+      return(out_tmp)
+      
+    })
+    out_b <- do.call("cbind", out_b_lst)
+    
+    out_sub_mx <- as.matrix(cbind(out_a, out_b))
+    out_sub_mx <- out_sub_mx[, is_outlier_fields]
+    out_sub_mx <- cbind(out_sub_mx,
+                        outlier = rowSums(as.matrix(out_sub_mx)) > 0)
+    outlier_mx[lvl_inds, ] <- as.matrix(out_sub_mx)
+    
+    rm(out_sub_mx, lvl_inds)
+    
+  }
+  
+  return(outlier_mx)
+  
 }
 
 # Return list of genes based on criteria
