@@ -14,6 +14,7 @@ set_installPath <- function(path = file.path("package", "R")){
 
 suppressPackageStartupMessages({
   library(ggplot2)
+  library(svglite) # For saving SVG with ggplot2
   library(reticulate)
   library(sessioninfo)
 })
