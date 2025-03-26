@@ -59,10 +59,10 @@ theme_set(theme_classic())
 
 #library(foreach)
 #library(doParallel)
-# if(nCPU > 1){
-#   registerDoParallel(cores = nCPU)
-#   `%op%` <- `%dopar%`
-#   print(paste0("Running with ", nCPU, " cores."), quote = FALSE)
-# } else {
-#   `%op%` <- `%do%`
-# }
+if(nCPU > 1){
+  registerDoParallel(cores = nCPU)
+  `%op%` <- `%dopar%`
+  print(paste0("Running with ", nCPU, " cores."), quote = FALSE)
+} else {
+  `%op%` <- `%do%`
+}
