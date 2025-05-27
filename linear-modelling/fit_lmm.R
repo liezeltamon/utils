@@ -15,7 +15,6 @@
 #'
 #' @return A named list with the following elements:
 #' \describe{
-#'   \item{full_formula}{The formula used to fit the full linear mixed-effects model.}
 #'   \item{full_model}{The fitted model object returned by `lmer()`.}
 #'   \item{model_terms_test}{ANOVA results for fixed effects terms, computed using `anova()` from `lmerTest`.}
 #'   \item{model_df}{A tidy `data.frame` containing the Type III ANOVA table.}
@@ -130,7 +129,6 @@ fit_lmm <- function (
 
   # Save model objects to list
   models <- list()
-  models$full_formula <- full_fm
   models$full_model <- full_model
   models$model_terms_test <- model_terms_test
   models$model_df <- model_df
