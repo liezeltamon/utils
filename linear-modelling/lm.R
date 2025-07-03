@@ -92,24 +92,24 @@ create_model_formula <- function (fixed_effects, random_effects, verbose = TRUE)
       collapse = " + "
     )
     if (verbose == TRUE) {
-      message(paste("Using null model:", "cluster ~", model_rhs))
+      message(paste("Using null model:", "response ~", model_rhs))
     }
   } else if (!is.null(fixed_effects) && is.null(random_effects)) {
     model_rhs <- paste0(fixed_effects, collapse = " + ")
     if (verbose == TRUE) {
-      message(paste("Using null model:", "cluster ~", model_rhs))
-      # For now, do not allow models without mixed effects terms
-      stop("No random effects specified")
+      message(paste("Using null model:", "response ~", model_rhs))
+      #stop("No random effects specified")
+      model_rhs <- paste0(fixed_effects, collapse = " + ")
     }
   } else if (is.null(fixed_effects) && !is.null(random_effects)) {
     model_rhs <- paste0("(1|", random_effects, ")", collapse = " + ")
     if (verbose == TRUE) {
-      message(paste("Using null model:", "cluster ~", model_rhs))
+      message(paste("Using null model:", "response ~", model_rhs))
     }
   } else {
     model_rhs <- "1" # only includes intercept
     if (verbose == TRUE) {
-      message(paste("Using null model:", "cluster ~", model_rhs))
+      message(paste("Using null model:", "response ~", model_rhs))
       stop("No random or fixed effects specified")
     }
   }
