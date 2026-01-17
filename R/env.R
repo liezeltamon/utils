@@ -12,12 +12,15 @@ set_installPath <- function(path = file.path("package", "R")){
 
 ###
 
-suppressPackageStartupMessages({
-  library(ggplot2)
-  library(svglite) # For saving SVG with ggplot2
-  library(reticulate)
-  library(sessioninfo)
-})
+# suppressPackageStartupMessages({
+#   library(ggplot2)
+#   library(svglite) # For saving SVG with ggplot2
+#   library(reticulate)
+#   library(sessioninfo)
+#   library(foreach)
+#   library(doParallel)
+#   library(itertools)
+# })
 
 options(warnPartialMatchDollar = TRUE)
 options(warn = 1)
@@ -53,16 +56,38 @@ save_sessioninfo <- function(out_dir, out_id){
 }
 
 #library(ggplot2)
-theme_set(theme_classic())
+
+theme_default <- function(base_size = 12, base_family = "sans") { # "DejaVu Sans"
+  theme_linedraw(base_size = base_size, base_family = base_family) +
+    theme(
+      panel.grid.major = element_blank(), #element_line(color = "grey80", size = 0.5),
+      panel.grid.minor = element_blank(), #element_line(color = "grey90", size = 0.25),
+      plot.background = element_rect(fill = "white", color = NA),
+      legend.background = element_rect(fill = "white", color = NA),
+      legend.key = element_rect(fill = "white", color = NA),
+      text = element_text(family = base_family),
+      axis.title   = element_text(family = base_family),
+      axis.text    = element_text(family = base_family),
+      legend.title = element_text(family = base_family),
+      legend.text  = element_text(family = base_family),
+      strip.text   = element_text(family = base_family, colour = "black"),
+      strip.background = element_blank()
+      )
+}
+
+theme_set(theme_default())
 
 ##### Stash for reference
 
 #library(foreach)
 #library(doParallel)
-if(nCPU > 1){
-  registerDoParallel(cores = nCPU)
-  `%op%` <- `%dopar%`
-  print(paste0("Running with ", nCPU, " cores."), quote = FALSE)
-} else {
-  `%op%` <- `%do%`
+#library(itertools)
+setup_parallel <- function(n_cpu) {
+  if(n_cpu > 1){
+    registerDoParallel(cores = n_cpu)
+    return(`%dopar%`)
+    print(paste0("Running with ", n_cpu, " cores."), quote = FALSE)
+  } else {
+    return(`%do%`)
+  }
 }
