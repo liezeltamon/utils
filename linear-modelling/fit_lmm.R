@@ -1,7 +1,9 @@
-#' Fit a Linear Mixed-Effects Model (LMM)
+#' Fit a Linear Mixed-Effects Model (LMM) or Linear Model (LM)
 #'
 #' Fits a linear mixed-effects model using `lmer()` from `lmerTest` package,
 #' with user-specified fixed effects, random effects, and contrasts.
+#' Automatically falls back to `lm()` if no random effects specified or if
+#' singular fit is detected.
 #'
 #' @param dataset A data frame containing the contrast factor, random, and fixed effects for the model
 #' @param response A `string` specifying the name of the response variable
@@ -15,13 +17,14 @@
 #'
 #' @return A named list with the following elements:
 #' \describe{
-#'   \item{full_model}{The fitted model object returned by `lmer()`.}
-#'   \item{model_terms_test}{ANOVA results for fixed effects terms, computed using `anova()` from `lmerTest`.}
-#'   \item{model_df}{A tidy `data.frame` containing the Type III ANOVA table.}
+#'   \item{full_model}{The fitted model object returned by `lmer()` or `lm()`.}
+#'   \item{model_terms_test}{ANOVA results for fixed effects terms.}
+#'   \item{model_df}{A tidy `data.frame` containing the ANOVA table and contrasts.}
 #' }
 #'
 #' @examples
 #' \dontrun{
+#' # With random effects (mixed model)
 #' output <- fit_lmm(
 #'   dataset = cell_data,
 #'   response = "score1",
@@ -30,31 +33,21 @@
 #'   fixed_effects = "pool_id",
 #'   save_models = FALSE
 #' )
+#' 
+#' # Without random effects (linear model)
+#' output <- fit_lmm(
+#'   dataset = cell_data,
+#'   response = "score1",
+#'   contrast = "group",
+#'   random_effects = NULL,
+#'   save_models = FALSE
+#' )
 #' }
 #'
 #' @import tidyverse
 #' @import lme4
 #' @import lmerTest
 source(file.path("utils", "lm.R"))
-
-# library(lme4)
-# library(lmerTest)
-# source(file.path("utils", "lm.R"))
-# 
-# dataset = cell_data
-# response = "score1"
-# contrast = c("group", "expanded", "group:expanded")
-# fixed_effects = c("pool_id")
-# random_effects = "individual"
-# 
-# output <- fit_lmm(
-#   dataset = cell_data,
-#   response = "score1",
-#   contrast = c("group", "expanded", "group:expanded"),
-#   random_effects = "individual",
-#   fixed_effects = c("pool_id"),
-#   save_models = FALSE
-# )
 
 fit_lmm <- function (
     dataset,
@@ -65,34 +58,71 @@ fit_lmm <- function (
     verbose = FALSE,
     save_models = FALSE,
     save_model_dir = "."
-    #n_cores = 1,
-    #p.adjust_method = "BH"
 ) {
+  
+  # Determine if we should try mixed model
+  use_lmer <- !is.null(random_effects) && length(random_effects) > 0
   
   model_rhs <- create_model_formula(
     fixed_effects = fixed_effects,
-    random_effects = random_effects,
+    random_effects = if (use_lmer) random_effects else NULL,
     verbose = verbose
   )
-  full_fm <- as.formula(paste0(
-    c(paste0(response, " ~ ", paste(contrast, collapse = " + "), " + "), model_rhs), collapse = ""
-  ))
-  full_model <- lmerTest::lmer(
-    formula = full_fm,
-    data = dataset
-  )
-  # Equivalent to anova(full_model, type = "III", ddf = "Satterthwaite")
-  model_terms_test <- lmerTest:::anova.lmerModLmerTest(
-    full_model,
-    type = "III", ddf = "Satterthwaite"
-  )
   
-  fixed_effect_names <- names(fixef(full_model))
-  ci_mx <- confint.merMod(full_model, method = "Wald", parm = fixed_effect_names)
+  full_fm <- as.formula(paste0(
+    c(paste0(response, " ~ ", paste(contrast, collapse = " + "), " + "), model_rhs), 
+    collapse = ""
+  ))
+  if (verbose) {
+    message("Fitting model with formula: ", deparse(full_fm))
+  }
+  
+  # Try mixed model first if random effects specified
+  if (use_lmer) {
+    full_model <- lmerTest::lmer(formula = full_fm, data = dataset)
+    
+    # Check for singular fit
+    if (lme4::isSingular(full_model)) {
+      message(
+        "Singular fit detected. Refitting as linear model (lm) without random effects."
+      )
+      # Refit as simple linear model
+      full_fm_lm <- as.formula(paste0(
+        response, " ~ ", paste(c(contrast, fixed_effects), collapse = " + ")
+      ))
+      full_model <- lm(formula = full_fm_lm, data = dataset)
+      use_lmer <- FALSE  # Update flag for appropriate downstream processing
+    }
+  } else {
+    # No random effects specified - use lm directly
+    if (verbose) {
+      message("No random effects specified. Fitting linear model (lm).")
+    }
+    full_model <- lm(formula = full_fm, data = dataset)
+  }
+  
+  # Extract results based on model type
+  if (use_lmer) {
+    # Mixed model results
+    model_terms_test <- lmerTest:::anova.lmerModLmerTest(
+      full_model, 
+      type = "III", 
+      ddf = "Satterthwaite"
+    )
+    fixed_effect_names <- names(lme4::fixef(full_model))
+    ci_mx <- confint.merMod(full_model, method = "Wald", parm = fixed_effect_names)
+    coeffs <- summary(full_model)$coefficients
+  } else {
+    # Linear model results
+    model_terms_test <- anova(full_model)
+    ci_mx <- confint(full_model)
+    coeffs <- summary(full_model)$coefficients
+  }
+  
   colnames(ci_mx) <- c("coef.95pct.ci.lower", "coef.95pct.ci.upper")
-  # Collect other info including odds ratio
+  
+  # Collect model info including coefficients and CIs
   model_info <- ci_mx 
-  coeffs <- summary(full_model)$coefficients
   colnames(coeffs)[1] <- "coef"
   model_info <- cbind(coeffs[rownames(model_info), ], model_info)
 
@@ -111,7 +141,6 @@ fit_lmm <- function (
     unite("statistic", var, statistic, sep = ".", remove = FALSE)
   
   # Pairwise contrasts with emmeans()
-  
   contrasts <- lapply(contrast, function(x) {
     pairwise_contrasts(
       full_model,
@@ -132,10 +161,11 @@ fit_lmm <- function (
   models$full_model <- full_model
   models$model_terms_test <- model_terms_test
   models$model_df <- model_df
+  models$model_type <- if(use_lmer) "lmer" else "lm"  # Track which type was used
   
   if (save_models) {
     saveRDS(models, file.path(save_model_dir, "lmm.modelobj.rds"))
   }
-  return(models)
   
+  return(models)
 }
