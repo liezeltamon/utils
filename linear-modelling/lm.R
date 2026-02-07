@@ -110,7 +110,7 @@ create_model_formula <- function (fixed_effects, random_effects, verbose = TRUE)
     model_rhs <- "1" # only includes intercept
     if (verbose == TRUE) {
       message(paste("Using null model:", "response ~", model_rhs))
-      stop("No random or fixed effects specified")
+      warning("No random or fixed effects specified")
     }
   }
   return(model_rhs)
