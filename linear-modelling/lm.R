@@ -36,7 +36,8 @@ pairwise_contrasts <- function (
   emm_emmeans <- emmeans(
      model, as.formula(paste("~ ", contrast)), adjust = "none"
   )
-  emm_contrasts <- contrast(emm_emmeans, "revpairwise", adjust = adjust_contrast) %>% 
+  emm_contrasts <- contrast(emm_emmeans, "pairwise", adjust = adjust_contrast) %>% 
+  #emm_contrasts <- contrast(emm_emmeans, "revpairwise", adjust = adjust_contrast) %>% 
     # Add confidence intervals and test for significance of estimates
     summary(level = 0.95, infer = c(TRUE, TRUE), type = "response")
   
