@@ -145,7 +145,7 @@ fit_lmm <- function (
     pairwise_contrasts(
       full_model,
       contrast = x,
-      adjust_contrast = "tukey",
+      adjust_contrast = "none", #"tukey",
       save_objects = TRUE,
       save_dir = save_model_dir
     )
