@@ -20,7 +20,7 @@
 #' frequency less than or equal to its observed missingness.
 #'
 #' @export
-filter_features_by_imputation_error <- function(
+filter_features_by_imputation_error_variant <- function(
     feature_matrix,
     benchmark_results,
     method = "missForest",

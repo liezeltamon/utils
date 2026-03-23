@@ -17,7 +17,7 @@
 #' at artificially masked entries only.
 #'
 #' @export
-benchmark_imputation <- function(
+benchmark_imputation_variant <- function(
     feature_matrix,
     na_frequencies = c(0.1, 0.2, 0.3),
     seed_strategy = c("feature", "sample"),
