@@ -8,12 +8,13 @@
 #' @param dataset A data frame containing the contrast factor, random, and fixed effects for the model
 #' @param response A `string` specifying the name of the response variable
 #' @param contrast A character vector specifying the variables (main effects or interactions)
-#'   for which contrasts should be computed (e.g., `c("group", "expanded", "group:expanded")`).
+#'   for which contrasts should be computed (e.g., `c("group", "expanded", "group:expanded")`). The first variable in the vector will be used for Levene's test of homogeneity of variance and make sure it is a main effect rather than an interaction for this reason.
 #' @param fixed_effects A character vector of additional fixed effects
 #' @param random_effects A character vector of grouping variables for random intercepts
 #' @param verbose Logical; if `TRUE`, prints model-fitting progress and messages
 #' @param save_models Logical; if `TRUE`, saves the fitted model object(s) to disk
 #' @param save_model_dir Character; directory path where models should be saved (default: current directory)
+#' @param method Character; method for handling non-parametric data. Options are "lmer" (default) for linear mixed model, "rank_transform" for rank-transforming the response variable and fitting a linear model, and "art" for using the aligned rank transform method (to be implemented).
 #'
 #' @return A named list with the following elements:
 #' \describe{
@@ -49,11 +50,6 @@
 #' @import lmerTest
 source(file.path("utils", "lm.R"))
 
-# Post-hoc checking of assumptions for parametric tests
-# performance::check_model(full_model) # Visual checks of assumptions
-# shapiro.test(residuals(full_model))
-# car::leveneTest(full_model, dataset$group)
-
 fit_lmm <- function (
     dataset,
     response,
@@ -63,9 +59,21 @@ fit_lmm <- function (
     verbose = FALSE,
     save_models = FALSE,
     save_model_dir = ".",
-    method = c("lmer", "rank_transform", "art") # Last two to be implemented, "rank_transform" for non-parametric main effects, "art" for non-parametric alternative involving interactions (see https://depts.washington.edu/acelab/proj/art/), check how to interpret main effects from ART models
+    method = c("lmer", "rank_transform", "art") # To implement "art" for non-parametric alternative involving interactions (see https://depts.washington.edu/acelab/proj/art/), check how to interpret main effects from ART models
 ) {
-  
+
+  stopifnot(
+    "Response should not have missing values." = !anyNA(dataset[[response]])
+  )
+
+  method <- match.arg(method)
+
+  # Rank-transform the response variable if requested
+  if (method == "rank_transform") {
+    if (verbose) message("Rank-transforming response variable: ", response)
+    dataset[[response]] <- rank(dataset[[response]])
+  }
+
   # Determine if we should try mixed model
   use_lmer <- !is.null(random_effects) && length(random_effects) > 0
   
@@ -168,6 +176,25 @@ fit_lmm <- function (
   models$model_terms_test <- model_terms_test
   models$model_df <- model_df
   models$model_type <- if(use_lmer) "lmer" else "lm"  # Track which type was used
+  models$method <- method
+  
+  # Assumption checks
+  # performance::check_model(full_model) # Visual checks of assumptions
+  shapiro <- shapiro.test(residuals(full_model))
+  levene_group <- contrast[1]
+  if (grepl(":", levene_group)) {
+    warning(
+      "Levene's test skipped: '", levene_group, "' is an interaction term. Reorder contrast so a main effect is first."
+    )
+    levene <- NULL
+  } else {
+    levene <- car::leveneTest(residuals(full_model) ~ dataset[[levene_group]])
+  }
+  models$assumption_tests <- list(
+    shapiro = shapiro,
+    levene = levene,
+    assumptions_violated = shapiro$p.value < 0.05 | (!is.null(levene) && levene[1, "Pr(>F)"] < 0.05)
+  )
   
   if (save_models) {
     saveRDS(models, file.path(save_model_dir, "lmm.modelobj.rds"))
