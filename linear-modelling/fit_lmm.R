@@ -49,6 +49,11 @@
 #' @import lmerTest
 source(file.path("utils", "lm.R"))
 
+# Post-hoc checking of assumptions for parametric tests
+# performance::check_model(full_model) # Visual checks of assumptions
+# shapiro.test(residuals(full_model))
+# car::leveneTest(full_model, dataset$group)
+
 fit_lmm <- function (
     dataset,
     response,
@@ -57,7 +62,8 @@ fit_lmm <- function (
     fixed_effects = NULL,
     verbose = FALSE,
     save_models = FALSE,
-    save_model_dir = "."
+    save_model_dir = ".",
+    method = c("lmer", "rank_transform", "art") # Last two to be implemented, "rank_transform" for non-parametric main effects, "art" for non-parametric alternative involving interactions (see https://depts.washington.edu/acelab/proj/art/), check how to interpret main effects from ART models
 ) {
   
   # Determine if we should try mixed model
