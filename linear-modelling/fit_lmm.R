@@ -59,7 +59,7 @@ fit_lmm <- function (
     verbose = FALSE,
     save_models = FALSE,
     save_model_dir = ".",
-    method = c("lmer", "rank_transform", "art") # To implement "art" for non-parametric alternative involving interactions (see https://depts.washington.edu/acelab/proj/art/), check how to interpret main effects from ART models
+    method = c("lmer", "rank_transform", "art") # To implement "art" for non-parametric alternative involving interactions (see https://depts.washington.edu/acelab/proj/art), check how to interpret main effects from ART models
 ) {
 
   stopifnot(
