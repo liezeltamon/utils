@@ -59,9 +59,14 @@ filter_features_by_imputation_error_variant <- function(
 
     obs_na <- observed_na[feat]
 
+    if (obs_na < min(bench_method$na_fraction)) {
+      warning("Observed NA fraction for feature ", feat, " is ", obs_na, " which is less than the minimum NA fraction in benchmark results. Using minimum NA fraction for filtering decision but reconsider imputing again with appropriate NA fraction for benchmarking.")
+    }
+
     feat_rows <- bench_method[
       bench_method$feature == feat &
-        bench_method$na_fraction <= obs_na,
+        # if (obs_na < min(bench_method$na_fraction))
+        bench_method$na_fraction <= max(c(obs_na, min(bench_method$na_fraction))),#obs_na,
       , drop = FALSE
     ]
 
