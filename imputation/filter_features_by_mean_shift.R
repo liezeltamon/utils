@@ -126,6 +126,22 @@ filter_features_by_mean_shift <- function(
       n_obs <- length(obs)
       n_na <- sum(is.na(pre_grp))
 
+      if (n_obs == 0) {
+        feat_summary_rows[[grp]] <- data.frame(
+          feature = feat,
+          grouping_level = grp,
+          n_observed = 0L,
+          n_missing = n_na,
+          pre_mean = NA_real_,
+          post_mean = mean(post_grp),
+          boot_mean = NA_real_,
+          boot_sd = NA_real_,
+          z_score = NA_real_,
+          group_removed = TRUE
+        )
+        next
+      }
+
       if (n_na == 0) {
         feat_summary_rows[[grp]] <- data.frame(
           feature = feat,
