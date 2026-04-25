@@ -15,6 +15,7 @@
 #' @param save_models Logical; if `TRUE`, saves the fitted model object(s) to disk
 #' @param save_model_dir Character; directory path where models should be saved (default: current directory)
 #' @param method Character; method for handling non-parametric data. Options are "lmer" (default) for linear mixed model, "rank_transform" for rank-transforming the response variable and fitting a linear model, and "art" for using the aligned rank transform method (to be implemented).
+#' @param additional_contrasts Optional named list of user-defined emmeans contrasts to compute in addition to pairwise contrasts.
 #'
 #' @return A named list with the following elements:
 #' \describe{
@@ -34,7 +35,7 @@
 #'   fixed_effects = "pool_id",
 #'   save_models = FALSE
 #' )
-#' 
+#'
 #' # Without random effects (linear model)
 #' output <- fit_lmm(
 #'   dataset = cell_data,
@@ -59,7 +60,8 @@ fit_lmm <- function (
     verbose = FALSE,
     save_models = FALSE,
     save_model_dir = ".",
-    method = c("lmer", "rank_transform", "art") # To implement "art" for non-parametric alternative involving interactions (see https://depts.washington.edu/acelab/proj/art), check how to interpret main effects from ART models
+    method = c("lmer", "rank_transform", "art"), # To implement "art" for non-parametric alternative involving interactions (see https://depts.washington.edu/acelab/proj/art), check how to interpret main effects from ART models
+    additional_contrasts = NULL
 ) {
 
   stopifnot(
@@ -76,25 +78,25 @@ fit_lmm <- function (
 
   # Determine if we should try mixed model
   use_lmer <- !is.null(random_effects) && length(random_effects) > 0
-  
+
   model_rhs <- create_model_formula(
     fixed_effects = fixed_effects,
     random_effects = if (use_lmer) random_effects else NULL,
     verbose = verbose
   )
-  
+
   full_fm <- as.formula(paste0(
-    c(paste0(response, " ~ ", paste(contrast, collapse = " + "), " + "), model_rhs), 
+    c(paste0(response, " ~ ", paste(contrast, collapse = " + "), " + "), model_rhs),
     collapse = ""
   ))
   if (verbose) {
     message("Fitting model with formula: ", deparse(full_fm))
   }
-  
+
   # Try mixed model first if random effects specified
   if (use_lmer) {
     full_model <- lmerTest::lmer(formula = full_fm, data = dataset)
-    
+
     # Check for singular fit
     if (lme4::isSingular(full_model)) {
       message(
@@ -114,13 +116,13 @@ fit_lmm <- function (
     }
     full_model <- lm(formula = full_fm, data = dataset)
   }
-  
+
   # Extract results based on model type
   if (use_lmer) {
     # Mixed model results
     model_terms_test <- lmerTest:::anova.lmerModLmerTest(
-      full_model, 
-      type = "III", 
+      full_model,
+      type = "III",
       ddf = "Satterthwaite"
     )
     fixed_effect_names <- names(lme4::fixef(full_model))
@@ -132,42 +134,80 @@ fit_lmm <- function (
     ci_mx <- confint(full_model)
     coeffs <- summary(full_model)$coefficients
   }
-  
+
   colnames(ci_mx) <- c("coef.95pct.ci.lower", "coef.95pct.ci.upper")
-  
+
   # Collect model info including coefficients and CIs
-  model_info <- ci_mx 
+  model_info <- ci_mx
   colnames(coeffs)[1] <- "coef"
   model_info <- cbind(coeffs[rownames(model_info), ], model_info)
 
   # Tidy model_info
   model_df <- model_info %>%
-    as.data.frame() %>% 
+    as.data.frame() %>%
     tibble::rownames_to_column("var") %>%
     pivot_longer(-var, names_to = "statistic") %>%
     unite("statistic", var, statistic, sep = ".", remove = FALSE)
-  
+
   # Tidy model_terms_test
-  model_terms_test_df <- model_terms_test %>% 
-    as.data.frame() %>% 
+  model_terms_test_df <- model_terms_test %>%
+    as.data.frame() %>%
     tibble::rownames_to_column("var") %>%
     pivot_longer(-var, names_to = "statistic") %>%
     unite("statistic", var, statistic, sep = ".", remove = FALSE)
-  
+
+  if (!is.null(additional_contrasts) && length(contrast) > 1) {
+    if (!is.list(additional_contrasts) || is.null(names(additional_contrasts))) {
+      stop(
+        "When multiple contrast terms are supplied, additional_contrasts ",
+        "must be named by contrast term."
+      )
+    }
+    extra_contrast_names <- setdiff(names(additional_contrasts), contrast)
+    if (length(extra_contrast_names) > 0) {
+      stop(
+        "additional_contrasts contains names that are not in contrast: ",
+        paste(extra_contrast_names, collapse = ", ")
+      )
+    }
+  }
+
   # Pairwise contrasts with emmeans()
   contrasts <- lapply(contrast, function(x) {
+    additional_contrasts_for_x <- NULL
+    if (!is.null(additional_contrasts)) {
+      if (!is.list(additional_contrasts)) {
+        stop("additional_contrasts must be a list.")
+      }
+      if (length(contrast) > 1) {
+        if (x %in% names(additional_contrasts)) {
+          additional_contrasts_for_x <- additional_contrasts[[x]]
+        }
+      } else if (
+        !is.null(names(additional_contrasts)) &&
+        x %in% names(additional_contrasts) &&
+        is.list(additional_contrasts[[x]]) &&
+        !is.numeric(additional_contrasts[[x]])
+      ) {
+        additional_contrasts_for_x <- additional_contrasts[[x]]
+      } else {
+        additional_contrasts_for_x <- additional_contrasts
+      }
+    }
+
     pairwise_contrasts(
       full_model,
       contrast = x,
       adjust_contrast = "none", #"tukey",
+      additional_contrasts = additional_contrasts_for_x,
       save_objects = TRUE,
       save_dir = save_model_dir
     )
   })
   contrasts_df <- do.call("rbind", contrasts)
-  
+
   # Combine
-  model_df <- bind_rows(model_df, model_terms_test_df, contrasts_df) %>% 
+  model_df <- bind_rows(model_df, model_terms_test_df, contrasts_df) %>%
     select(colnames(contrasts_df))
 
   # Save model objects to list
@@ -177,7 +217,7 @@ fit_lmm <- function (
   models$model_df <- model_df
   models$model_type <- if(use_lmer) "lmer" else "lm"  # Track which type was used
   models$method <- method
-  
+
   # Assumption checks
   # performance::check_model(full_model) # Visual checks of assumptions
   shapiro <- shapiro.test(residuals(full_model))
@@ -195,10 +235,10 @@ fit_lmm <- function (
     levene = levene,
     assumptions_violated = shapiro$p.value < 0.05 | (!is.null(levene) && levene[1, "Pr(>F)"] < 0.05)
   )
-  
+
   if (save_models) {
     saveRDS(models, file.path(save_model_dir, "lmm.modelobj.rds"))
   }
-  
+
   return(models)
 }
