@@ -228,7 +228,8 @@ fit_lmm <- function (
     )
     levene <- NULL
   } else {
-    levene <- car::leveneTest(residuals(full_model) ~ dataset[[levene_group]])
+    model_df <- model.frame(full_model)
+    levene <- car::leveneTest(residuals(full_model) ~ model_df[[levene_group]])
   }
   models$assumption_tests <- list(
     shapiro = shapiro,
