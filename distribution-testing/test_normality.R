@@ -111,7 +111,7 @@ test_normality <- function(
   # Collect results into a data frame
   results_df <- data.frame(
     feature = colnames(data_num),
-    n = sapply(data_num, function(v) sum(!is.na(v))),
+    n_nonmissing = sapply(data_num, function(v) sum(!is.na(v))),
     n_missing = sapply(data_num, function(v) sum(is.na(v))),
     test_used = sapply(test_results, `[[`, "method"),
     statistic = sapply(test_results, `[[`, "statistic"),
@@ -162,7 +162,7 @@ test_normality <- function(
   n_complete <- sum(!is.na(col_vals))
   if (test == "auto") return(if (n_complete <= 5000) "shapiro" else "ks")
   if (test == "shapiro" && n_complete > 5000)
-    warning("Shapiro-Wilk requires n <= 5000; switching to KS for this feature.")
+    warning("Shapiro-Wilk is appropriate for n <= 5000. Consider using ks.")
   test
 }
 
@@ -172,19 +172,24 @@ test_normality <- function(
   if (length(col_vals) < 3)
     return(list(statistic = NA_real_, p_value = NA_real_, method = NA_character_))
 
-  if (.choose_test(col_vals, test) == "shapiro") {
+  chosen <- .choose_test(col_vals, test)
+  if (chosen == "shapiro") {
     res <- tryCatch(
       shapiro.test(col_vals),
-      error = function(e) list(statistic = c(W = NA_real_), p.value = NA_real_)
+      error = function(e) list(statistic = NA_real_, p.value = NA_real_)
     )
     list(statistic = unname(res$statistic), p_value = res$p.value, method = "Shapiro-Wilk")
-  } else {
+  } else if (chosen == "ks") {
     # res <- tryCatch(
     #   ks.test(col_vals, "pnorm"), #, mean = mean(col_vals), sd = sd(col_vals)),
     #   error = function(e) list(statistic = NA_real_, p.value = NA_real_)
     # )
-    stop("Need to implement Lilliefors-corrected KS test for normality which does not require pre-specifying mean and sd. Consider using the 'nortest' package or similar. Check if Lilliefors test applicable for large samples.")
+    stop(
+      "Need to implement Lilliefors-corrected KS test for normality which does not require pre-specifying mean and sd. Consider using the 'nortest' package or similar. Check if Lilliefors test applicable for large samples."
+    )
     #list(statistic = unname(res$statistic), p_value = res$p.value, method = "Kolmogorov-Smirnov")
+  } else {
+    stop(".run_test(): Invalid test argument.")
   }
 }
 
