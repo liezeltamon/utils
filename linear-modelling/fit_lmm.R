@@ -16,6 +16,7 @@
 #' @param save_model_dir Character; directory path where models should be saved (default: current directory)
 #' @param method Character; method for handling non-parametric data. Options are "lmer" (default) for linear mixed model, "rank_transform" for rank-transforming the response variable and fitting a linear model, and "art" for using the aligned rank transform method (to be implemented).
 #' @param additional_contrasts Optional named list of user-defined emmeans contrasts to compute in addition to pairwise contrasts.
+#' @param equivalence_deltas Optional numeric vector of equivalence margins for emmeans TOST tests.
 #'
 #' @return A named list with the following elements:
 #' \describe{
@@ -61,7 +62,8 @@ fit_lmm <- function (
     save_models = FALSE,
     save_model_dir = ".",
     method = c("lmer", "rank_transform", "art"), # To implement "art" for non-parametric alternative involving interactions (see https://depts.washington.edu/acelab/proj/art), check how to interpret main effects from ART models
-    additional_contrasts = NULL
+    additional_contrasts = NULL,
+    equivalence_deltas = numeric()
 ) {
 
   stopifnot(
@@ -200,6 +202,7 @@ fit_lmm <- function (
       contrast = x,
       adjust_contrast = "none", #"tukey",
       additional_contrasts = additional_contrasts_for_x,
+      equivalence_deltas = equivalence_deltas,
       save_objects = TRUE,
       save_dir = save_model_dir
     )

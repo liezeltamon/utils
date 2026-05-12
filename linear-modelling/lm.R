@@ -76,11 +76,23 @@ prepare_additional_contrasts <- function(additional_contrasts, emm_emmeans, cont
     setNames(names(additional_contrasts))
 }
 
+format_equivalence_delta_label <- function(delta) {
+  paste0(
+    "delta_",
+    gsub(
+      "\\.",
+      "_",
+      format(delta, scientific = FALSE, trim = TRUE)
+    )
+  )
+}
+
 pairwise_contrasts <- function (
     model,
     contrast,
     adjust_contrast,
     additional_contrasts = NULL,
+    equivalence_deltas = numeric(),
     save_objects = TRUE,
     save_dir = ".",
     ...
@@ -89,7 +101,8 @@ pairwise_contrasts <- function (
   emm_emmeans <- emmeans(
      model, as.formula(paste("~ ", contrast)), adjust = "none"
   )
-  emm_contrasts <- contrast(emm_emmeans, "pairwise", adjust = adjust_contrast) %>%
+  emm_pairwise_contrasts <- contrast(emm_emmeans, "pairwise", adjust = adjust_contrast)
+  emm_contrasts <- emm_pairwise_contrasts %>%
   #emm_contrasts <- contrast(emm_emmeans, "revpairwise", adjust = adjust_contrast) %>%
     summary(level = 0.95, infer = c(TRUE, TRUE), type = "response")
 
@@ -100,17 +113,61 @@ pairwise_contrasts <- function (
   )
 
   if (!is.null(additional_contrasts)) {
-    emm_additional_contrasts <- contrast(
+    emm_additional_contrasts_grid <- contrast(
       emm_emmeans,
       method = additional_contrasts,
       adjust = adjust_contrast
-    ) %>%
+    )
+    emm_additional_contrasts <- emm_additional_contrasts_grid %>%
       summary(level = 0.95, infer = c(TRUE, TRUE), type = "response")
 
     emm_contrasts <- bind_rows(
       as.data.frame(emm_contrasts),
       as.data.frame(emm_additional_contrasts)
     )
+  } else {
+    emm_additional_contrasts_grid <- NULL
+  }
+
+  equivalence_df <- NULL
+  if (length(equivalence_deltas) > 0) {
+    equivalence_df <- bind_rows(lapply(equivalence_deltas, function(delta) {
+      delta_label <- format_equivalence_delta_label(delta)
+      equiv_pairwise <- test(
+        emm_pairwise_contrasts,
+        delta = delta,
+        side = "equivalence",
+        adjust = adjust_contrast
+      ) %>%
+        as.data.frame()
+
+      if (!is.null(emm_additional_contrasts_grid)) {
+        equiv_additional <- test(
+          emm_additional_contrasts_grid,
+          delta = delta,
+          side = "equivalence",
+          adjust = adjust_contrast
+        ) %>%
+          as.data.frame()
+        equiv_pairwise <- bind_rows(equiv_pairwise, equiv_additional)
+      }
+
+      equiv_pairwise %>%
+        as_tibble() %>%
+        select(contrast, t.ratio, p.value) %>%
+        pivot_longer(
+          cols = c(t.ratio, p.value),
+          names_to = "statistic",
+          values_to = "value"
+        ) %>%
+        mutate(
+          statistic = recode(
+            statistic,
+            p.value = paste0("equiv.pvalue.", delta_label),
+            t.ratio = paste0("equiv.t.ratio.", delta_label)
+          )
+        )
+    }))
   }
 
   # Get standardised effect size metrics
@@ -232,6 +289,7 @@ select(contrast, statistic, value)
 df <- do.call("rbind", lst) %>%
   as.data.frame() %>%
   bind_rows(effect_size_df) %>%  # ← Add the effect sizes here
+  bind_rows(equivalence_df) %>%
   mutate(
     statistic = recode(
       statistic,
