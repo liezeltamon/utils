@@ -98,10 +98,10 @@ pairwise_contrasts <- function (
     ...
 ) {
 
-  emm_emmeans <- emmeans(
+  emm_emmeans <- emmeans::emmeans(
      model, as.formula(paste("~ ", contrast)), adjust = "none"
   )
-  emm_pairwise_contrasts <- contrast(emm_emmeans, "pairwise", adjust = adjust_contrast)
+  emm_pairwise_contrasts <- emmeans::contrast(emm_emmeans, "pairwise", adjust = adjust_contrast)
   emm_contrasts <- emm_pairwise_contrasts %>%
   #emm_contrasts <- contrast(emm_emmeans, "revpairwise", adjust = adjust_contrast) %>%
     summary(level = 0.95, infer = c(TRUE, TRUE), type = "response")
@@ -113,7 +113,7 @@ pairwise_contrasts <- function (
   )
 
   if (!is.null(additional_contrasts)) {
-    emm_additional_contrasts_grid <- contrast(
+    emm_additional_contrasts_grid <- emmeans::contrast(
       emm_emmeans,
       method = additional_contrasts,
       adjust = adjust_contrast
@@ -133,7 +133,7 @@ pairwise_contrasts <- function (
   if (length(equivalence_deltas) > 0) {
     equivalence_df <- bind_rows(lapply(equivalence_deltas, function(delta) {
       delta_label <- format_equivalence_delta_label(delta)
-      equiv_pairwise <- test(
+      equiv_pairwise <- emmeans::test(
         emm_pairwise_contrasts,
         delta = delta,
         side = "equivalence",
@@ -142,7 +142,7 @@ pairwise_contrasts <- function (
         as.data.frame()
 
       if (!is.null(emm_additional_contrasts_grid)) {
-        equiv_additional <- test(
+        equiv_additional <- emmeans::test(
           emm_additional_contrasts_grid,
           delta = delta,
           side = "equivalence",
@@ -173,7 +173,7 @@ pairwise_contrasts <- function (
   # Get standardised effect size metrics
 
   # Calculate Cohen's d using emmeans
-  emm_cohens_d <- eff_size(
+  emm_cohens_d <- emmeans::eff_size(
     emm_emmeans,
     method = "pairwise",
     sigma = sigma(model),
@@ -181,7 +181,7 @@ pairwise_contrasts <- function (
   )
 
   if (!is.null(additional_contrasts)) {
-    emm_additional_cohens_d <- eff_size(
+    emm_additional_cohens_d <- emmeans::eff_size(
       emm_emmeans,
       method = additional_contrasts,
       sigma = sigma(model),

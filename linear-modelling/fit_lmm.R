@@ -63,7 +63,9 @@ fit_lmm <- function (
     save_model_dir = ".",
     method = c("lmer", "rank_transform", "art"), # To implement "art" for non-parametric alternative involving interactions (see https://depts.washington.edu/acelab/proj/art), check how to interpret main effects from ART models
     additional_contrasts = NULL,
-    equivalence_deltas = numeric()
+    equivalence_deltas = numeric(),
+    compute_contrasts = TRUE,
+    check_assumptions = TRUE
 ) {
 
   stopifnot(
@@ -128,7 +130,7 @@ fit_lmm <- function (
       ddf = "Satterthwaite"
     )
     fixed_effect_names <- names(lme4::fixef(full_model))
-    ci_mx <- confint.merMod(full_model, method = "Wald", parm = fixed_effect_names)
+    ci_mx <- lme4::confint.merMod(full_model, method = "Wald", parm = fixed_effect_names)
     coeffs <- summary(full_model)$coefficients
   } else {
     # Linear model results
@@ -174,44 +176,48 @@ fit_lmm <- function (
     }
   }
 
-  # Pairwise contrasts with emmeans()
-  contrasts <- lapply(contrast, function(x) {
-    additional_contrasts_for_x <- NULL
-    if (!is.null(additional_contrasts)) {
-      if (!is.list(additional_contrasts)) {
-        stop("additional_contrasts must be a list.")
-      }
-      if (length(contrast) > 1) {
-        if (x %in% names(additional_contrasts)) {
-          additional_contrasts_for_x <- additional_contrasts[[x]]
+  if (compute_contrasts) {
+    # Pairwise contrasts with emmeans()
+    contrasts <- lapply(contrast, function(x) {
+      additional_contrasts_for_x <- NULL
+      if (!is.null(additional_contrasts)) {
+        if (!is.list(additional_contrasts)) {
+          stop("additional_contrasts must be a list.")
         }
-      } else if (
-        !is.null(names(additional_contrasts)) &&
-        x %in% names(additional_contrasts) &&
-        is.list(additional_contrasts[[x]]) &&
-        !is.numeric(additional_contrasts[[x]])
-      ) {
-        additional_contrasts_for_x <- additional_contrasts[[x]]
-      } else {
-        additional_contrasts_for_x <- additional_contrasts
+        if (length(contrast) > 1) {
+          if (x %in% names(additional_contrasts)) {
+            additional_contrasts_for_x <- additional_contrasts[[x]]
+          }
+        } else if (
+          !is.null(names(additional_contrasts)) &&
+          x %in% names(additional_contrasts) &&
+          is.list(additional_contrasts[[x]]) &&
+          !is.numeric(additional_contrasts[[x]])
+        ) {
+          additional_contrasts_for_x <- additional_contrasts[[x]]
+        } else {
+          additional_contrasts_for_x <- additional_contrasts
+        }
       }
-    }
 
-    pairwise_contrasts(
-      full_model,
-      contrast = x,
-      adjust_contrast = "none", #"tukey",
-      additional_contrasts = additional_contrasts_for_x,
-      equivalence_deltas = equivalence_deltas,
-      save_objects = TRUE,
-      save_dir = save_model_dir
-    )
-  })
-  contrasts_df <- do.call("rbind", contrasts)
+      pairwise_contrasts(
+        full_model,
+        contrast = x,
+        adjust_contrast = "none", #"tukey",
+        additional_contrasts = additional_contrasts_for_x,
+        equivalence_deltas = equivalence_deltas,
+        save_objects = TRUE,
+        save_dir = save_model_dir
+      )
+    })
+    contrasts_df <- do.call("rbind", contrasts)
 
-  # Combine
-  model_df <- bind_rows(model_df, model_terms_test_df, contrasts_df) %>%
-    select(colnames(contrasts_df))
+    # Combine
+    model_df <- bind_rows(model_df, model_terms_test_df, contrasts_df) %>%
+      select(colnames(contrasts_df))
+  } else {
+    model_df <- bind_rows(model_df, model_terms_test_df)
+  }
 
   # Save model objects to list
   models <- list()
@@ -221,24 +227,28 @@ fit_lmm <- function (
   models$model_type <- if(use_lmer) "lmer" else "lm"  # Track which type was used
   models$method <- method
 
-  # Assumption checks
-  # performance::check_model(full_model) # Visual checks of assumptions
-  shapiro <- shapiro.test(residuals(full_model))
-  levene_group <- contrast[1]
-  if (grepl(":", levene_group)) {
-    warning(
-      "Levene's test skipped: '", levene_group, "' is an interaction term. Reorder contrast so a main effect is first."
+  if (check_assumptions) {
+    # Assumption checks
+    # performance::check_model(full_model) # Visual checks of assumptions
+    shapiro <- shapiro.test(residuals(full_model))
+    levene_group <- contrast[1]
+    if (grepl(":", levene_group)) {
+      warning(
+        "Levene's test skipped: '", levene_group, "' is an interaction term. Reorder contrast so a main effect is first."
+      )
+      levene <- NULL
+    } else {
+      model_df <- model.frame(full_model)
+      levene <- car::leveneTest(residuals(full_model) ~ model_df[[levene_group]])
+    }
+    models$assumption_tests <- list(
+      shapiro = shapiro,
+      levene = levene,
+      assumptions_violated = shapiro$p.value < 0.05 | (!is.null(levene) && levene[1, "Pr(>F)"] < 0.05)
     )
-    levene <- NULL
   } else {
-    model_df <- model.frame(full_model)
-    levene <- car::leveneTest(residuals(full_model) ~ model_df[[levene_group]])
+    models$assumption_tests <- NULL
   }
-  models$assumption_tests <- list(
-    shapiro = shapiro,
-    levene = levene,
-    assumptions_violated = shapiro$p.value < 0.05 | (!is.null(levene) && levene[1, "Pr(>F)"] < 0.05)
-  )
 
   if (save_models) {
     saveRDS(models, file.path(save_model_dir, "lmm.modelobj.rds"))
