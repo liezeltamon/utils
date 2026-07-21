@@ -8,6 +8,7 @@ library(slingshot)
 run_slingshot <- function(
     data,
     labels = NULL,
+    min_label_size = 2,
     dimred_name = NULL,
     # Specify start and end clusters for semi-supervised approach
     start.clus = NULL, # Developers "generally recommend the specification of an initial cluster based on prior knowledge"
@@ -30,11 +31,27 @@ run_slingshot <- function(
     
     labels <- as.character(labels)
     labels_tally <- table(labels)
-    if (any(labels_tally == 1)) {
-      drop_ind <- which(as.character(labels) == names(which(labels_tally == 1)))
-      data <- data[, -drop_ind]
+
+    if (any(labels_tally < min_label_size)) {
+      rare_labels <- names(labels_tally)[labels_tally < min_label_size]
+      drop_ind <- which(labels %in% rare_labels)
+
+      if (is.matrix(data)) {
+        # Matrix input is sample x PC, so remove sample rows.
+        data <- data[-drop_ind, , drop = FALSE]
+      } else {
+        # SingleCellExperiment stores samples in columns.
+        data <- data[, -drop_ind]
+      }
+
       labels <- labels[-drop_ind]
-      message("run_slingshot(): Removing cluster with 1 member")
+
+      message(
+        "run_slingshot(): Removing labels with fewer than ",
+        min_label_size,
+        " members: ",
+        paste(rare_labels, collapse = ", ")
+      )
     }
     output <- slingshot(data, clusterLabels = labels, reducedDim = dimred_name, start.clus = start.clus, end.clus = end.clus, approx_points = approx_points, ...)
     
