@@ -178,9 +178,9 @@ gamm_start_vs_end_test <- function(
   )
 }
 
-# Population-level fitted trajectory. Random intercepts are excluded. Relative
-# positions make curves with feature-specific available ranges clusterable
-# without extrapolating beyond a feature's observations.
+# Population-level fitted trajectory. Random intercepts are excluded. When
+# predictor_values is supplied, callers can use a shared predictor grid across
+# features; values outside a feature's observed range are model extrapolations.
 gamm_predict_smooth <- function(
     fit,
     n_points = 100L,
