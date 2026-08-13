@@ -2,8 +2,10 @@
 #'
 #' Fits a linear mixed-effects model using `lmer()` from `lmerTest` package,
 #' with user-specified fixed effects, random effects, and contrasts.
-#' Automatically falls back to `lm()` if no random effects specified or if
-#' singular fit is detected.
+#' Retries non-converged mixed models with a pre-specified optimizer sequence.
+#' For singular random-intercept models, removes only the near-zero variance
+#' component, refits, and repeats. Falls back to `lm()` only when no supported
+#' random effects remain.
 #'
 #' @param dataset A data frame containing the contrast factor, random, and fixed effects for the model
 #' @param response A `string` specifying the name of the response variable
@@ -18,11 +20,26 @@
 #' @param additional_contrasts Optional named list of user-defined emmeans contrasts to compute in addition to pairwise contrasts.
 #' @param equivalence_deltas Optional numeric vector of equivalence margins for emmeans TOST tests.
 #'
+#' @details Before fitting, all model-required columns are checked for missing
+#' values, response and contrast estimability is validated, constant adjustment
+#' terms are removed, random-intercept replication is diagnosed, and the fixed
+#' design matrix is checked for full rank. Invalid fits stop with data
+#' diagnostics; conditions that remain estimable are retained and flagged.
+#'
+#' Simple continuous numeric variables supplied through `fixed_effects` are
+#' centered and scaled internally before fitting. This is an invertible change
+#' of units that improves numerical conditioning; the applied centers and
+#' scales are returned in `lmm_diagnostics$scaled_fixed_effects`. Contrast terms,
+#' binary numeric fixed effects, and transformed terms are not scaled.
+#'
 #' @return A named list with the following elements:
 #' \describe{
 #'   \item{full_model}{The fitted model object returned by `lmer()` or `lm()`.}
 #'   \item{model_terms_test}{ANOVA results for fixed effects terms.}
 #'   \item{model_df}{A tidy `data.frame` containing the ANOVA table and contrasts.}
+#'   \item{lmm_diagnostics}{Pre-fit data summaries and warning flags, optimizer
+#'   attempts, fixed- and random-effect removal decisions, retained model terms,
+#'   final variance components, and continuous-covariate scaling metadata.}
 #' }
 #'
 #' @examples
@@ -51,6 +68,7 @@
 #' @import lme4
 #' @import lmerTest
 source(file.path("utils", "lm.R"))
+source(file.path("utils", "fit_lmm_helpers.R"))
 
 fit_lmm <- function (
     dataset,
@@ -67,12 +85,20 @@ fit_lmm <- function (
     compute_contrasts = TRUE,
     check_assumptions = TRUE
 ) {
-
-  stopifnot(
-    "Response should not have missing values." = !anyNA(dataset[[response]])
-  )
-
   method <- match.arg(method)
+  requested_fixed_effects <- unique(fixed_effects)
+  requested_random_effects <- unique(random_effects)
+  prepared_inputs <- prepare_lmm_inputs(
+    dataset = dataset,
+    response = response,
+    contrast = contrast,
+    fixed_effects = requested_fixed_effects,
+    random_effects = requested_random_effects
+  )
+  dataset <- prepared_inputs$dataset
+  fixed_effects <- prepared_inputs$fixed_effects
+  current_random_effects <- prepared_inputs$random_effects
+  data_diagnostics <- prepared_inputs$diagnostics
 
   # Rank-transform the response variable if requested
   if (method == "rank_transform") {
@@ -80,45 +106,198 @@ fit_lmm <- function (
     dataset[[response]] <- rank(dataset[[response]])
   }
 
-  # Determine if we should try mixed model
-  use_lmer <- !is.null(random_effects) && length(random_effects) > 0
-
-  model_rhs <- create_model_formula(
+  # Determine if any structurally estimable random intercepts remain.
+  use_lmer <- length(current_random_effects) > 0
+  full_fm <- build_lmm_formula(
+    response = response,
+    contrast = contrast,
     fixed_effects = fixed_effects,
-    random_effects = if (use_lmer) random_effects else NULL,
-    verbose = verbose
+    random_effects =
+    if (use_lmer) current_random_effects else NULL
   )
-
-  full_fm <- as.formula(paste0(
-    c(paste0(response, " ~ ", paste(contrast, collapse = " + "), " + "), model_rhs),
-    collapse = ""
-  ))
   if (verbose) {
     message("Fitting model with formula: ", deparse(full_fm))
   }
 
-  # Try mixed model first if random effects specified
-  if (use_lmer) {
-    full_model <- lmerTest::lmer(formula = full_fm, data = dataset)
+  lmm_diagnostics <- list(
+    data_diagnostics = data_diagnostics,
+    attempts = data.frame(),
+    simplification_steps = data.frame(),
+    requested_fixed_effects = requested_fixed_effects,
+    retained_fixed_effects = fixed_effects,
+    removed_fixed_effects = data_diagnostics$fixed_effect_removals,
+    requested_random_effects = requested_random_effects,
+    retained_random_effects = current_random_effects,
+    removed_random_effects =
+      data_diagnostics$structural_random_effect_removals$random_effect,
+    final_variance_components = NULL,
+    final_singular = FALSE,
+    final_formula = paste(deparse(full_fm), collapse = " "),
+    scaled_fixed_effects = data_diagnostics$scaled_fixed_effects
+  )
 
-    # Check for singular fit
-    if (lme4::isSingular(full_model)) {
-      message(
-        "Singular fit detected. Refitting as linear model (lm) without random effects."
+  # Try a mixed model first if random effects are specified. A converged but
+  # singular fit is simplified one near-zero random intercept at a time. Each
+  # reduced model starts the convergence checks again.
+  if (use_lmer) {
+    repeat {
+      retry_fit <- fit_lmm_with_retries(full_fm, dataset)
+      retry_fit$attempts$formula <- paste(deparse(full_fm), collapse = " ")
+      retry_fit$attempts$random_effects <- paste(
+        current_random_effects,
+        collapse = ","
       )
-      # Refit as simple linear model
-      full_fm_lm <- as.formula(paste0(
-        response, " ~ ", paste(c(contrast, fixed_effects), collapse = " + ")
-      ))
-      full_model <- lm(formula = full_fm_lm, data = dataset)
-      use_lmer <- FALSE  # Update flag for appropriate downstream processing
+      lmm_diagnostics$attempts <- dplyr::bind_rows(
+        lmm_diagnostics$attempts,
+        retry_fit$attempts
+      )
+      fit_converged_before_removal <- !is.null(retry_fit$model)
+
+      if (fit_converged_before_removal) {
+        full_model <- retry_fit$model
+        if (!lme4::isSingular(full_model)) {
+          break
+        }
+
+        variance_components <- get_random_intercept_variances(full_model)
+        zero_variance_components <- variance_components %>%
+          dplyr::filter(.data$sd_relative_to_residual < 1e-4)
+
+        if (nrow(zero_variance_components) == 0) {
+          stop_lmm_with_diagnostics(
+            paste0(
+              "Mixed model is singular, but no near-zero random-intercept ",
+              "variance component could be identified safely."
+            ),
+            data_diagnostics
+          )
+        }
+
+        component_to_remove <- zero_variance_components$grp[
+          which.min(zero_variance_components$sd_relative_to_residual)
+        ]
+        component_variance <- zero_variance_components$vcov[
+          zero_variance_components$grp == component_to_remove
+        ][1]
+        component_relative_sd <-
+          zero_variance_components$sd_relative_to_residual[
+            zero_variance_components$grp == component_to_remove
+          ][1]
+        simplification_evidence <- "converged singular fit"
+      } else {
+        if (length(retry_fit$zero_random_effect_candidates) == 0) {
+          stop_lmm_with_diagnostics(
+            paste0(
+              "Mixed model failed to converge after all optimizer attempts. ",
+              retry_fit$failure_details
+            ),
+            data_diagnostics
+          )
+        }
+
+        candidate_components <- retry_fit$candidate_variance_components %>%
+          dplyr::group_by(.data$grp) %>%
+          dplyr::summarise(
+            optimizer_support = dplyr::n_distinct(.data$attempt),
+            max_relative_sd = max(.data$sd_relative_to_residual),
+            median_variance = stats::median(.data$vcov),
+            .groups = "drop"
+          ) %>%
+          dplyr::arrange(
+            dplyr::desc(.data$optimizer_support),
+            .data$max_relative_sd,
+            .data$grp
+          )
+        component_to_remove <- candidate_components$grp[1]
+        component_variance <- candidate_components$median_variance[1]
+        component_relative_sd <- candidate_components$max_relative_sd[1]
+        simplification_evidence <- paste0(
+          candidate_components$optimizer_support[1],
+          " non-converged singular optimizer fit(s) identified this near-zero component"
+        )
+      }
+
+      lmm_diagnostics$simplification_steps <- dplyr::bind_rows(
+        lmm_diagnostics$simplification_steps,
+        data.frame(
+          removed_random_effect = component_to_remove,
+          variance = component_variance,
+          sd_relative_to_residual = component_relative_sd,
+          formula_before_removal = paste(deparse(full_fm), collapse = " "),
+          fit_converged_before_removal = fit_converged_before_removal,
+          evidence = simplification_evidence,
+          stringsAsFactors = FALSE
+        )
+      )
+      lmm_diagnostics$removed_random_effects <- c(
+        lmm_diagnostics$removed_random_effects,
+        component_to_remove
+      )
+
+      if (verbose) {
+        message(
+          "Singular fit: removing near-zero random intercept '",
+          component_to_remove,
+          "' and refitting."
+        )
+      }
+
+      current_random_effects <- setdiff(
+        current_random_effects,
+        component_to_remove
+      )
+
+      if (length(current_random_effects) == 0) {
+        full_fm <- build_lmm_formula(
+          response = response,
+          contrast = contrast,
+          fixed_effects = fixed_effects,
+          random_effects = NULL
+        )
+        full_model <- tryCatch(
+          stats::lm(formula = full_fm, data = dataset),
+          error = function(e) {
+            stop_lmm_with_diagnostics(
+              paste0("Linear-model fallback failed: ", conditionMessage(e)),
+              data_diagnostics
+            )
+          }
+        )
+        use_lmer <- FALSE
+        break
+      }
+
+      full_fm <- build_lmm_formula(
+        response = response,
+        contrast = contrast,
+        fixed_effects = fixed_effects,
+        random_effects = current_random_effects
+      )
     }
   } else {
     # No random effects specified - use lm directly
     if (verbose) {
       message("No random effects specified. Fitting linear model (lm).")
     }
-    full_model <- lm(formula = full_fm, data = dataset)
+    full_model <- tryCatch(
+      stats::lm(formula = full_fm, data = dataset),
+      error = function(e) {
+        stop_lmm_with_diagnostics(
+          paste0("Linear model failed: ", conditionMessage(e)),
+          data_diagnostics
+        )
+      }
+    )
+  }
+
+  lmm_diagnostics$retained_random_effects <- current_random_effects
+  lmm_diagnostics$final_formula <- paste(deparse(full_fm), collapse = " ")
+  if (use_lmer) {
+    lmm_diagnostics$final_variance_components <-
+      get_random_intercept_variances(full_model)
+    lmm_diagnostics$final_singular <- lme4::isSingular(full_model)
+  } else {
+    lmm_diagnostics$retained_random_effects <- character()
   }
 
   # Extract results based on model type
@@ -226,6 +405,7 @@ fit_lmm <- function (
   models$model_df <- model_df
   models$model_type <- if(use_lmer) "lmer" else "lm"  # Track which type was used
   models$method <- method
+  models$lmm_diagnostics <- lmm_diagnostics
 
   if (check_assumptions) {
     # Assumption checks
