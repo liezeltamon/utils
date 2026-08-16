@@ -67,8 +67,34 @@
 #' @import tidyverse
 #' @import lme4
 #' @import lmerTest
-source(file.path("utils", "lm.R"))
-source(file.path("utils", "fit_lmm_helpers.R"))
+# Resolve dependencies beside this script so sourcing does not depend on the
+# caller's working directory. R_UTILS_DIR supports execution contexts that do
+# not expose the current source-file path.
+fit_lmm_source_file <- tryCatch(
+  sys.frame(1)$ofile,
+  error = function(condition) NULL
+)
+linear_modelling_dir <- if (
+  length(fit_lmm_source_file) == 1L &&
+    !is.null(fit_lmm_source_file) &&
+    !is.na(fit_lmm_source_file) &&
+    nzchar(fit_lmm_source_file)
+) {
+  dirname(normalizePath(fit_lmm_source_file, mustWork = TRUE))
+} else {
+  file.path(Sys.getenv("R_UTILS_DIR", unset = "."), "linear-modelling")
+}
+
+# Load the contrast and model-diagnostic helpers into the same environment as
+# fit_lmm(), including when this file is sourced into a test environment.
+source(file.path(linear_modelling_dir, "lm.R"), local = environment())
+source(
+  file.path(linear_modelling_dir, "fit_lmm_helpers.R"),
+  local = environment()
+)
+
+# Avoid exposing path-resolution implementation details to downstream callers.
+rm(fit_lmm_source_file, linear_modelling_dir)
 
 fit_lmm <- function (
     dataset,
