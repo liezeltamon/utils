@@ -9,6 +9,7 @@ promotion into a stable package.
 | Folder | Intended contents and examples |
 | --- | --- |
 | `linear-modelling/` | Linear and mixed models, contrasts, model checks, and diagnostics; for example, fitting an LMM and extracting estimated marginal means. |
+| `additive-modelling/` | Generalized additive models, smooth predictions, and trend inference; for example, testing whether a fitted GAMM changes across a continuous predictor. |
 | `imputation/` | Imputation methods and their evaluation; for example, benchmarking imputation error at different missing-data rates. |
 | `distribution-testing/` | Tests and diagnostics for feature distributions; for example, normality and pre/post-processing distribution shifts. |
 | `correlation/` | Correlation and dependence analysis; for example, estimating correlations robustly across repeated subsamples. |
@@ -26,15 +27,17 @@ promotion into a stable package.
 | `environment/` | R library, Conda, reticulate, and session-environment setup. |
 | `parallel-computing/` | Parallel backend and worker configuration. |
 | `file-handling/` | Reusable directory, filename, and file-management helpers. |
+| `summarisation/` | Reusable data summaries; for example, complete grouped counts and proportions that retain categories absent from individual groups. |
 | `general/` | Small, genuinely general helpers that do not yet belong to a more specific collection. |
 
 ## Current contents
 
-The initial collections cover cell annotation, integration, quality control,
-reference datasets, functional enrichment, trajectory analysis, plotting,
-environment setup, marker sets, and transcription-factor activity. Mixed
-scripts remain intact until their functions can be reviewed and separated
-without changing behaviour.
+The initial collections cover statistical modelling, imputation assessment,
+distribution testing, correlation, enrichment, pattern clustering, grouped
+summaries, cell annotation, integration, quality control, reference datasets,
+trajectory analysis, plotting, environment setup, marker sets, and
+transcription-factor activity. Mixed scripts remain intact until their
+functions can be reviewed and separated without changing behaviour.
 
 Interfaces in this repository may change while utilities are being developed.
 Projects consuming them should pin a known Git commit or submodule revision.
